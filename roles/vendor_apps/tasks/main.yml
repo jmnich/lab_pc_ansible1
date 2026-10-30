@@ -10,24 +10,41 @@
 # --- lazygit -----------------------------------------------------------------
 
 - name: Check installed lazygit version
-  ansible.builtin.command: "{{ lazygit_install_path }} version"
+  ansible.builtin.command: "{{ lazygit_install_path }} --version"
   register: lazygit_current
   failed_when: false
   changed_when: false
 
+- name: Read installed lazygit version
+  ansible.builtin.set_fact:
+    lazygit_installed_version: >-
+      {{ (lazygit_current.stdout.split('version=')[1].split(',')[0])
+         if 'version=' in lazygit_current.stdout else '' }}
+
 - name: Determine whether lazygit needs an update
   ansible.builtin.set_fact:
-    lazygit_outdated: "{{ lazygit_current.rc != 0 or ('version=' ~ lazygit_version) not in lazygit_current.stdout }}"
+    lazygit_outdated: "{{ lazygit_current.rc != 0 or lazygit_installed_version != lazygit_version }}"
 
 - name: Download lazygit release tarball
   ansible.builtin.get_url:
     url: "{{ lazygit_tarball_url }}"
     dest: "{{ lazygit_tarball_dest }}"
     mode: "0644"
+    timeout: 120
   when: lazygit_outdated | bool
 
 # Extract to a staging dir first: the tarball also contains LICENSE/README,
 # which must not land in /usr/local/bin.
+# unarchive does not create dest, so create the staging dir explicitly.
+- name: Ensure lazygit staging directory exists
+  ansible.builtin.file:
+    path: "{{ lazygit_tarball_dest }}.extracted"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: lazygit_outdated | bool
+
 - name: Extract lazygit tarball to staging dir
   ansible.builtin.unarchive:
     src: "{{ lazygit_tarball_dest }}"
@@ -55,6 +72,7 @@
     url: "{{ fts_binary_url }}"
     dest: "{{ fts_install_path }}"
     mode: "0755"
+    timeout: 120
 
 - name: Install FTS Data Explorer desktop entry
   ansible.builtin.copy:
@@ -72,6 +90,9 @@
       Terminal=false
 
 # --- Digilent WaveForms + Adept runtime --------------------------------------
+# files.digilent.com is behind a Cloudflare browser challenge and can answer
+# 403 to get_url. If that happens, download the pinned .deb once in Firefox
+# and place it in {{ digilent_deb_dir }}; get_url skips files that already exist.
 
 - name: Download Digilent Adept runtime .deb
   ansible.builtin.get_url:

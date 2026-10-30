@@ -7,6 +7,12 @@ Wants=network-online.target
 Type=oneshot
 # Never prompt for credentials (repo is public); fail fast instead of hanging.
 Environment=GIT_TERMINAL_PROMPT=0
+# ansible-pull always limits its git-checkout step to
+# "localhost,<machine-hostname>,...,127.0.0.1". The inventory deliberately
+# defines only localhost, so without this every run logs
+# "[WARNING]: Could not match supplied host pattern, ignoring: <hostname>".
+# The playbook only targets localhost, so the mismatch is expected.
+Environment=ANSIBLE_HOST_PATTERN_MISMATCH=ignore
 # apt/flatpak installs can take a while on a fresh machine.
 TimeoutStartSec=2h
 ExecStart=/usr/bin/ansible-pull --url REPO_URL --directory /var/lib/ansible-pull --inventory inventory --checkout main --limit localhost local.yml
