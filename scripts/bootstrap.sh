@@ -87,14 +87,24 @@ systemctl daemon-reload
 # the timer can never overlap on the same pull directory / apt locks.
 
 log "running ansible-pull once via ansible-pull.service to converge now"
-systemctl start ansible-pull.service
+# A failure here must NOT prevent the timer from being enabled: otherwise a
+# transient network/DNS error on a fresh laptop would leave it with no
+# automatic retry at all. The failure is still reported below (exit non-zero).
+converge_ok=1
+systemctl start ansible-pull.service || converge_ok=0
 
 # --- 6. Enable the timer for recurring runs ---------------------------------
-# Enabled only after the manual converge finished, so the first timer tick
+# Enabled only after the manual converge attempt, so the first timer tick
 # cannot race with it.
 
 log "enabling ansible-pull.timer (every hour)"
 systemctl enable --now ansible-pull.timer
+
+if [ "$converge_ok" -eq 0 ]; then
+    log "WARNING: the first converge failed; the timer is enabled and will"
+    log "retry within the hour. Inspect: journalctl -u ansible-pull.service -n 50"
+    fail "first ansible-pull converge failed (see the journal for details)"
+fi
 
 log "SUCCESS: laptop is configured. ansible-pull will re-apply every hour."
 log "Check status with: systemctl status ansible-pull.service"

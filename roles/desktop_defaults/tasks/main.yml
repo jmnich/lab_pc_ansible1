@@ -1,4 +1,18 @@
 ---
+# Neither /etc/dconf/profile nor /etc/dconf/db/local.d is guaranteed to exist
+# on a fresh install (only the ibus package ships its own profile/db), so
+# create them before writing keyfiles into them.
+- name: Ensure dconf system directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/dconf/profile
+    - /etc/dconf/db/local.d
+
 - name: Configure dconf system profile
   ansible.builtin.copy:
     dest: /etc/dconf/profile/user
