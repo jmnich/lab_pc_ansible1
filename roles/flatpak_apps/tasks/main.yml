@@ -1,0 +1,27 @@
+---
+- name: Install Flatpak
+  ansible.builtin.apt:
+    name: flatpak
+    state: present
+
+- name: Add Flathub remote (system-wide)
+  community.general.flatpak_remote:
+    name: flathub
+    flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+    method: system
+    state: present
+
+- name: Install curated Flatpak apps
+  community.general.flatpak:
+    name: "{{ item }}"
+    method: system
+    state: present
+  loop: "{{ flatpak_packages }}"
+
+- name: Remove blacklisted Flatpak apps
+  community.general.flatpak:
+    name: "{{ item }}"
+    method: system
+    state: absent
+  loop: "{{ flatpak_packages_absent }}"
+  when: flatpak_packages_absent | length > 0

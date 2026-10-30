@@ -1,0 +1,12 @@
+---
+apt_packages:
+  - curl
+  - git
+  - htop
+  - vim
+  - build-essential
+  - vlc
+  - libreoffice
+  - gimp
+
+apt_packages_absent: []   # explicit blacklist only; never use wildcards

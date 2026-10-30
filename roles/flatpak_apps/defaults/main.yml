@@ -1,0 +1,6 @@
+---
+flatpak_packages:
+  - org.mozilla.firefox
+  - com.visualstudio.code
+
+flatpak_packages_absent: []   # explicit blacklist only; never use wildcards

@@ -1,0 +1,10 @@
+---
+# Ansible collections required by the playbook.
+#
+# Pinned to the last community.general series that supports ansible-core
+# 2.9/2.10 (the ansible shipped with the Linux Mint 21 base). Newer series
+# require ansible-core >= 2.11 (5.x/6.x) or >= 2.13 (8.x). Bump the pin when
+# the fleet's base OS ships a newer ansible-core.
+collections:
+  - name: community.general
+    version: "4.8.1"

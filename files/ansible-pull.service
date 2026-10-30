@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply lab configuration from Git
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Never prompt for credentials (repo is public); fail fast instead of hanging.
+Environment=GIT_TERMINAL_PROMPT=0
+# apt/flatpak installs can take a while on a fresh machine.
+TimeoutStartSec=2h
+ExecStart=/usr/bin/ansible-pull --url REPO_URL --directory /var/lib/ansible-pull --inventory inventory --checkout main local.yml
