@@ -14,5 +14,6 @@ apt_packages:
   - kitty
   - fish
   - cutecom   # GUI serial-port (COM) terminal
+  - timeshift  # system snapshots (RSYNC mode by default on Mint)
 
 apt_packages_absent: []   # explicit blacklist only; never use wildcards
