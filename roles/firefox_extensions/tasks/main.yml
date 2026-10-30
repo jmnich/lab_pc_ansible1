@@ -1,0 +1,17 @@
+---
+- name: Ensure Firefox policies directory exists
+  ansible.builtin.file:
+    path: "{{ firefox_policies_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install system-wide Firefox extension policies
+  ansible.builtin.template:
+    src: policies.json.j2
+    dest: "{{ firefox_policies_dir }}/policies.json"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "python3 -m json.tool %s"

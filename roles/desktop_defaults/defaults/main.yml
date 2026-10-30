@@ -1,0 +1,8 @@
+---
+# System-wide default terminal emulator (Cinnamon desktop).
+# Xfce/MATE use different settings and are not covered here.
+default_terminal_exec: kitty
+default_terminal_exec_arg: ""
+
+# Default login shell for newly created users (existing users need chsh).
+default_shell: /usr/bin/fish

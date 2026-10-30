@@ -38,7 +38,12 @@
       Unattended-Upgrade::Allowed-Origins {
           "${distro_id}:${distro_codename}";
           "${distro_id}:${distro_codename}-security";
-          "Ubuntu:${distro_codename}";
-          "Ubuntu:${distro_codename}-security";
           "Linux Mint:${distro_codename}";
+          // Ubuntu base repos. ${distro_codename} is the MINT codename on
+          // Mint, so the Ubuntu base must be listed explicitly:
+          // Mint 21 = jammy, Mint 22 = noble. Extend when the base changes.
+          "Ubuntu:jammy";
+          "Ubuntu:jammy-security";
+          "Ubuntu:noble";
+          "Ubuntu:noble-security";
       };

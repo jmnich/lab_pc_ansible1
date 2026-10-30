@@ -1,0 +1,12 @@
+---
+# Enterprise policies for the distro (deb) Firefox shipped with Linux Mint.
+# NOTE: this does NOT affect a Flatpak Firefox — the Flatpak build uses a
+# separate profile and its own extension mechanism.
+firefox_policies_dir: /etc/firefox/policies
+
+# Extensions force-installed for every user. `id` is the AMO extension ID.
+firefox_forced_extensions:
+  - id: jid1-MnnxcxisBPnSXQ@jetpack     # Privacy Badger
+    install_url: https://addons.mozilla.org/firefox/downloads/latest/jid1-MnnxcxisBPnSXQ@jetpack/latest.xpi
+  - id: cjpalhdlnbpafiamejdnhcphjbkeiagm # uBlock Origin
+    install_url: https://addons.mozilla.org/firefox/downloads/latest/cjpalhdlnbpafiamejdnhcphjbkeiagm/latest.xpi

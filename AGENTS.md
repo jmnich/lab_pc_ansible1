@@ -13,6 +13,10 @@ description of the same system.
 ├── inventory                  # static localhost inventory — do not add per-laptop hosts
 ├── roles/common/              # apt suite; edit defaults/main.yml, not tasks
 ├── roles/flatpak_apps/        # flatpak + Flathub; edit defaults/main.yml, not tasks
+├── roles/desktop_defaults/    # kitty default terminal (dconf), fish shell
+├── roles/serial_access/       # dialout group for all users via pam_group
+├── roles/firefox_extensions/  # forced Firefox extensions via policies.json
+├── roles/python_system/       # python3-* apt packages from a pip-freeze list
 ├── files/ansible-pull.service # systemd unit; contains a literal REPO_URL placeholder
 ├── files/ansible-pull.timer   # systemd timer (1 h, 1 min after boot)
 ├── requirements.yml           # pinned collections (community.general 4.8.1)
@@ -25,7 +29,7 @@ description of the same system.
   To remove one fleet-wide, move it to `apt_packages_absent` (explicit names
   only — never wildcards).
 - **Flatpak app**: edit `roles/flatpak_apps/defaults/main.yml` →
-  `flatpak_packages` (use full app IDs, e.g. `org.mozilla.firefox`). To
+  `flatpak_packages` (use full app IDs, e.g. `com.visualstudio.code`). To
   remove one fleet-wide, move it to `flatpak_packages_absent`.
 - After editing, verify with `ansible-playbook -i inventory local.yml --syntax-check`
   (install collections first if missing:
@@ -39,6 +43,9 @@ description of the same system.
    `*_packages_absent` lists only).
 2. No `apt upgrade` / full system upgrades in the playbook —
    `unattended-upgrades` owns that.
+2a. Never pip-install into system Python (PEP 668 externally-managed on
+    Mint). Python packages come from apt as `python3-*` only; PyPI names
+    without an apt equivalent are skipped (see `roles/python_system`).
 3. Playbook targets `localhost` only. Per-machine extras go in
    `host_vars/localhost/` or group vars, never manual install steps.
 4. **No secrets anywhere** — no passwords, tokens, internal IPs, or private
@@ -73,6 +80,22 @@ description of the same system.
   re-run or manual unit refresh, since the units are installed once.
 - **Per-machine software**: prefer `host_vars/localhost/` overrides over
   manual installs. Manual installs are never reverted by this config.
+- **Desktop defaults**: terminal/shell live in
+  `roles/desktop_defaults/defaults/main.yml` (Cinnamon dconf; Xfce/MATE
+  are not covered). Existing users need `chsh` for the fish shell —
+  only new users get it automatically.
+- **Serial-port access**: `roles/serial_access` grants `dialout` to every
+  user at login via pam_group + `/etc/security/group.conf` (the standard
+  Mint/Debian mechanism — do not replace it with per-user `usermod` loops).
+  Already-logged-in users must re-login (or run `newgrp dialout` once).
+- **Firefox extensions**: edit `roles/firefox_extensions/defaults/main.yml`.
+  Policies apply to the distro (deb) Firefox only — do NOT add
+  `org.mozilla.firefox` back to the Flatpak list; the Flatpak build ignores
+  enterprise policies.
+- **Python package set**: edit
+  `roles/python_system/files/requirements-system-python.txt` (keep it a
+  `pip freeze` output). apt-available `python3-*` packages are installed,
+  the rest are skipped — check the debug output of a run for skips.
 
 ## Git workflow
 

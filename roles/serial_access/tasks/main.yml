@@ -1,0 +1,23 @@
+---
+# Fleet-wide serial-port access: instead of usermod-ing each user, grant the
+# group to EVERY user at login via pam_group. This covers existing and
+# future users with a single idempotent config; no per-user /etc/group edits.
+# (Users already logged in need to re-login, or `newgrp dialout` once.)
+
+- name: Verify the dialout group exists (ships with udev on Mint)
+  ansible.builtin.getent:
+    database: group
+    key: "{{ serial_group }}"
+
+- name: Enable pam_group in the PAM session stack
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-session
+    regexp: '^#?\s*session\s+optional\s+pam_group\.so'
+    line: 'session optional pam_group.so'
+
+- name: Grant all users serial-port access at login (group.conf)
+  ansible.builtin.blockinfile:
+    path: /etc/security/group.conf
+    marker: "# {mark} ANSIBLE MANAGED - lab serial-port access"
+    block: |
+      *;*;*;*;{{ serial_group }}

@@ -56,7 +56,9 @@ command -v ansible-pull >/dev/null 2>&1 || fail "ansible-pull not found after in
 if apt-cache show ansible-collection-community-general >/dev/null 2>&1; then
     log "installing community.general from the distro package"
     DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-collection-community-general
-elif ! ansible-galaxy collection list 2>/dev/null | grep -q '^community\.general'; then
+else
+    # Always enforce the pin (idempotent: skips when already satisfied),
+    # even if some other community.general version is already present.
     log "installing pinned collections from requirements.yml"
     ansible-galaxy collection install -r requirements.yml
 fi

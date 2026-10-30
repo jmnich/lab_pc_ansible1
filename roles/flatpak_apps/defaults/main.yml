@@ -1,6 +1,8 @@
 ---
+# NOTE: Firefox is intentionally NOT installed as a Flatpak — the distro
+# (deb) Firefox shipped with Mint is the managed browser; Firefox enterprise
+# policies (see roles/firefox_extensions) do not apply to the Flatpak build.
 flatpak_packages:
-  - org.mozilla.firefox
   - com.visualstudio.code
 
 flatpak_packages_absent: []   # explicit blacklist only; never use wildcards

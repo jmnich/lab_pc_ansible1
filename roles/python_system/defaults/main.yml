@@ -1,0 +1,10 @@
+---
+# Source list: `pip freeze` of the reference lab venv, kept as the
+# single source of truth for the desired Python package set.
+#
+# Packages are installed from APT as python3-<name>. PyPI names that have
+# no python3-* equivalent in the repositories are SKIPPED (reported by the
+# debug task). Never pip-install into system Python: Mint (noble base)
+# marks it externally managed (PEP 668) and mixing PyPI packages into it
+# can break apt-managed system packages.
+python_requirements_file: requirements-system-python.txt

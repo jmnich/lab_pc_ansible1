@@ -10,12 +10,21 @@ variable at the top of `scripts/bootstrap.sh`.
 
 ## What this repository manages
 
-- The base apt software suite (see `roles/common/defaults/main.yml`)
+- The base apt software suite, incl. Polish LibreOffice packs, kitty and
+  fish (see `roles/common/defaults/main.yml`)
 - A curated set of Flatpak apps (see `roles/flatpak_apps/defaults/main.yml`)
 - The Flathub remote, system-wide
 - The systemd timer that runs `ansible-pull` every hour (1 min after boot)
 - Automatic security upgrades via `unattended-upgrades` (installed and
   enabled by `roles/common`)
+- Default terminal (kitty) and default login shell for new users (fish),
+  system-wide via dconf — Cinnamon desktop (`roles/desktop_defaults`)
+- Serial-port access for all lab users: everyone is granted the `dialout`
+  group at login via `pam_group` (`roles/serial_access`)
+- Force-installed Firefox extensions (Privacy Badger, uBlock Origin) via
+  enterprise policies on the distro Firefox (`roles/firefox_extensions`)
+- Python packages for the system Python, installed from apt as
+  `python3-*` (see `roles/python_system`)
 
 What this repository deliberately does NOT manage:
 
@@ -29,7 +38,14 @@ What this repository deliberately does NOT manage:
    (apt packages) or `roles/flatpak_apps/defaults/main.yml` (Flatpak apps).
 2. To remove an app fleet-wide, move it from the install list to
    `apt_packages_absent` (apt) or `flatpak_packages_absent` (Flatpak).
-3. Commit and push to `main`.
+3. To change the Python package set, update
+   `roles/python_system/files/requirements-system-python.txt` (a
+   `pip freeze` output). Packages with a `python3-*` apt equivalent are
+   installed; the rest are skipped automatically. Python packages are
+   NEVER pip-installed into system Python (PEP 668).
+4. Firefox extensions: edit `roles/firefox_extensions/defaults/main.yml`.
+   Terminal/shell defaults: edit `roles/desktop_defaults/defaults/main.yml`.
+5. Commit and push to `main`.
 
 Every laptop that is online applies the change within about one hour.
 A laptop that was offline applies it on its next run after booting.

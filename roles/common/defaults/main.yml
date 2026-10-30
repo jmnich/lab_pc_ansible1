@@ -7,6 +7,12 @@ apt_packages:
   - build-essential
   - vlc
   - libreoffice
+  - libreoffice-l10n-pl
+  - libreoffice-help-pl
+  - hunspell-pl
   - gimp
+  - kitty
+  - fish
+  - cutecom   # GUI serial-port (COM) terminal
 
 apt_packages_absent: []   # explicit blacklist only; never use wildcards

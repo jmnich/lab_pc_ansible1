@@ -5,3 +5,7 @@
   roles:
     - common
     - flatpak_apps
+    - desktop_defaults
+    - serial_access
+    - firefox_extensions
+    - python_system

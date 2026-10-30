@@ -1,0 +1,4 @@
+---
+# Group whose members may open serial devices (/dev/ttyUSB*, /dev/ttyACM*).
+# 'dialout' is the standard group udev assigns to serial ports on Mint.
+serial_group: dialout

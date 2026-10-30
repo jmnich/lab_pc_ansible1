@@ -1,0 +1,14 @@
+{
+  "policies": {
+    "ExtensionSettings": {
+      "*": { "installation_mode": "allowed" }
+      {%- for ext in firefox_forced_extensions %}
+      ,
+      "{{ ext.id }}": {
+        "installation_mode": "force_installed",
+        "install_url": "{{ ext.install_url }}"
+      }
+      {%- endfor %}
+    }
+  }
+}

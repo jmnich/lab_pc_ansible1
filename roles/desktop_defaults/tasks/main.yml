@@ -1,0 +1,29 @@
+---
+- name: Configure dconf system profile
+  ansible.builtin.copy:
+    dest: /etc/dconf/profile/user
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      user-db:user
+      system-db:local
+  notify: Update dconf database
+
+- name: Set default terminal system-wide (Cinnamon)
+  ansible.builtin.copy:
+    dest: /etc/dconf/db/local.d/00-lab-terminal
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [org/cinnamon/desktop/applications/terminal]
+      exec='{{ default_terminal_exec }}'
+      exec-arg='{{ default_terminal_exec_arg }}'
+  notify: Update dconf database
+
+- name: Set default login shell for new users
+  ansible.builtin.lineinfile:
+    path: /etc/default/useradd
+    regexp: '^#?SHELL='
+    line: 'SHELL={{ default_shell }}'
