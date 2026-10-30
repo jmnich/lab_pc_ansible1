@@ -1,0 +1,33 @@
+---
+# All upstream URLs/versions are pinned HERE. Bump them when a new upstream
+# release is wanted; everything else in the role follows automatically.
+
+# --- lazygit: static binary from GitHub releases (no apt/Flathub package) ---
+lazygit_version: "0.66.2"
+lazygit_tarball_url: "https://github.com/jesseduffield/lazygit/releases/download/v{{ lazygit_version }}/lazygit_{{ lazygit_version }}_linux_x86_64.tar.gz"
+lazygit_tarball_dest: "/var/cache/lab-downloads/lazygit_{{ lazygit_version }}_linux_x86_64.tar.gz"
+lazygit_install_path: /usr/local/bin/lazygit
+
+# --- FTS Data Explorer: raw binary from GitHub releases ---------------------
+# The release ships a bare ELF (no .deb/AppImage). It links against
+# X11/OpenGL, so the runtime libs are installed from apt alongside it.
+fts_release_tag: "v.26.10.1"
+fts_binary_url: "https://github.com/jmnich/fts_data_explorer/releases/download/{{ fts_release_tag }}/fts_data_explorer"
+fts_install_path: /usr/local/bin/fts_data_explorer
+fts_apt_deps:
+  - libopengl0
+  - libglu1-mesa
+  - libgl1
+  - libx11-6
+  - libxcb1
+  - libstdc++6
+
+# --- Digilent WaveForms + Adept runtime (proprietary .debs) -----------------
+# WaveForms requires the Adept runtime installed FIRST. files.digilent.com
+# is Cloudflare-fronted, so downloads send a browser User-Agent.
+digilent_adept_url: "https://files.digilent.com/Software/Adept2%20Runtime/2.30.1/digilent.adept.runtime_2.30.1_amd64.deb"
+digilent_waveforms_url: "https://files.digilent.com/Software/Waveforms/3.25.1/digilent.waveforms_3.25.1_amd64.deb"
+digilent_deb_dir: /var/cache/lab-downloads
+
+download_headers:
+  User-Agent: "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0"

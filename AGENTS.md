@@ -17,6 +17,7 @@ description of the same system.
 ├── roles/serial_access/       # dialout group for all users via pam_group
 ├── roles/firefox_extensions/  # forced Firefox extensions via policies.json
 ├── roles/python_system/       # python3-* apt packages from a pip-freeze list
+├── roles/vendor_apps/         # lazygit, FTS Data Explorer, Digilent WaveForms+Adept
 ├── files/ansible-pull.service # systemd unit; contains a literal REPO_URL placeholder
 ├── files/ansible-pull.timer   # systemd timer (1 h, 1 min after boot)
 ├── requirements.yml           # pinned collections (community.general 4.8.1)
@@ -92,6 +93,13 @@ description of the same system.
   Policies apply to the distro (deb) Firefox only — do NOT add
   `org.mozilla.firefox` back to the Flatpak list; the Flatpak build ignores
   enterprise policies.
+- **Vendor apps** (`roles/vendor_apps`): all upstream URLs/versions are
+  pinned in its `defaults/main.yml` — bump the pin, commit, done. Notes:
+  lazygit/FTS come from GitHub release assets; the Digilent .debs come from
+  files.digilent.com (Cloudflare-fronted, the role sends a browser UA — if a
+  download is ever challenged, fetch the .deb manually once). Adept MUST be
+  installed before WaveForms. Codium is a Flatpak (`com.vscodium.codium`)
+  with a `/usr/local/bin/codium` symlink so it works before re-login.
 - **Python package set**: edit
   `roles/python_system/files/requirements-system-python.txt` (a `pip
   freeze` output filtered to packages that have an installable `python3-*`

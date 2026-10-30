@@ -1,0 +1,110 @@
+---
+- name: Ensure download cache directory exists
+  ansible.builtin.file:
+    path: /var/cache/lab-downloads
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# --- lazygit -----------------------------------------------------------------
+
+- name: Check installed lazygit version
+  ansible.builtin.command: "{{ lazygit_install_path }} version"
+  register: lazygit_current
+  failed_when: false
+  changed_when: false
+
+- name: Determine whether lazygit needs an update
+  ansible.builtin.set_fact:
+    lazygit_outdated: "{{ lazygit_current.rc != 0 or ('version=' ~ lazygit_version) not in lazygit_current.stdout }}"
+
+- name: Download lazygit release tarball
+  ansible.builtin.get_url:
+    url: "{{ lazygit_tarball_url }}"
+    dest: "{{ lazygit_tarball_dest }}"
+    mode: "0644"
+  when: lazygit_outdated | bool
+
+# Extract to a staging dir first: the tarball also contains LICENSE/README,
+# which must not land in /usr/local/bin.
+- name: Extract lazygit tarball to staging dir
+  ansible.builtin.unarchive:
+    src: "{{ lazygit_tarball_dest }}"
+    dest: "{{ lazygit_tarball_dest }}.extracted"
+    remote_src: false
+  when: lazygit_outdated | bool
+
+- name: Install lazygit binary
+  ansible.builtin.copy:
+    src: "{{ lazygit_tarball_dest }}.extracted/lazygit"
+    dest: "{{ lazygit_install_path }}"
+    remote_src: true
+    mode: "0755"
+  when: lazygit_outdated | bool
+
+# --- FTS Data Explorer -------------------------------------------------------
+
+- name: Install FTS Data Explorer runtime libraries (X11/OpenGL)
+  ansible.builtin.apt:
+    name: "{{ fts_apt_deps }}"
+    state: present
+
+- name: Install FTS Data Explorer binary
+  ansible.builtin.get_url:
+    url: "{{ fts_binary_url }}"
+    dest: "{{ fts_install_path }}"
+    mode: "0755"
+
+- name: Install FTS Data Explorer desktop entry
+  ansible.builtin.copy:
+    dest: /usr/share/applications/fts-data-explorer.desktop
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Name=FTS Data Explorer
+      Comment=FTIR FTS data explorer
+      Exec={{ fts_install_path }}
+      Type=Application
+      Categories=Science;Engineering;
+      Terminal=false
+
+# --- Digilent WaveForms + Adept runtime --------------------------------------
+
+- name: Download Digilent Adept runtime .deb
+  ansible.builtin.get_url:
+    url: "{{ digilent_adept_url }}"
+    dest: "{{ digilent_deb_dir }}/{{ digilent_adept_url | basename }}"
+    mode: "0644"
+    headers: "{{ download_headers }}"
+    timeout: 120
+
+- name: Download Digilent WaveForms .deb
+  ansible.builtin.get_url:
+    url: "{{ digilent_waveforms_url }}"
+    dest: "{{ digilent_deb_dir }}/{{ digilent_waveforms_url | basename }}"
+    mode: "0644"
+    headers: "{{ download_headers }}"
+    timeout: 120
+
+# Adept MUST be installed before WaveForms: the WaveForms binary links against
+# the Adept runtime libraries (libdpcomm etc.) at load time.
+- name: Install Digilent Adept runtime
+  ansible.builtin.apt:
+    deb: "{{ digilent_deb_dir }}/{{ digilent_adept_url | basename }}"
+  register: digilent_adept_install
+
+- name: Install Digilent WaveForms
+  ansible.builtin.apt:
+    deb: "{{ digilent_deb_dir }}/{{ digilent_waveforms_url | basename }}"
+  register: digilent_waveforms_install
+
+- name: Reload udev rules for Digilent devices
+  ansible.builtin.command: udevadm control --reload-rules
+  when: digilent_adept_install.changed or digilent_waveforms_install.changed
+
+- name: Re-trigger udev for plugged-in Digilent devices
+  ansible.builtin.command: udevadm trigger
+  when: digilent_adept_install.changed or digilent_waveforms_install.changed

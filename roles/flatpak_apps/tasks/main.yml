@@ -18,6 +18,19 @@
     state: present
   loop: "{{ flatpak_packages }}"
 
+- name: Check codium flatpak launcher export exists
+  ansible.builtin.stat:
+    path: /var/lib/flatpak/exports/bin/codium
+  register: codium_export
+
+- name: Expose codium on the system PATH (works before re-login)
+  ansible.builtin.file:
+    src: /var/lib/flatpak/exports/bin/codium
+    dest: /usr/local/bin/codium
+    state: link
+    force: true
+  when: codium_export.stat.exists
+
 - name: Remove blacklisted Flatpak apps
   community.general.flatpak:
     name: "{{ item }}"

@@ -25,6 +25,9 @@ variable at the top of `scripts/bootstrap.sh`.
   enterprise policies on the distro Firefox (`roles/firefox_extensions`)
 - Python packages for the system Python, installed from apt as
   `python3-*` (see `roles/python_system`)
+- Vendor/upstream apps installed as system binaries: lazygit and FTS Data
+  Explorer (GitHub releases) and Digilent WaveForms + Adept runtime
+  (vendor .debs, pinned URLs in `roles/vendor_apps/defaults/main.yml`)
 
 What this repository deliberately does NOT manage:
 
