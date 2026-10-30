@@ -1,10 +1,44 @@
 ---
-# Source list: `pip freeze` of the reference lab venv, kept as the
-# single source of truth for the desired Python package set.
+# Source list: `pip freeze` of the reference lab venv, FILTERED to the
+# packages that have an installable `python3-*` apt candidate in the
+# Mint/Ubuntu base. Packages without one are deliberately absent: they cannot
+# be installed without pip, which is forbidden on the system Python (PEP 668,
+# AGENTS.md rule 2a).
 #
-# Packages are installed from APT as python3-<name>. PyPI names that have
-# no python3-* equivalent in the repositories are SKIPPED (reported by the
-# debug task). Never pip-install into system Python: Mint (noble base)
-# marks it externally managed (PEP 668) and mixing PyPI packages into it
-# can break apt-managed system packages.
+# Packages are installed from APT, honouring `python_apt_name_overrides`
+# below (Debian does not always use python3-<pypi-name>). If a listed package
+# loses its apt candidate, the run continues and reports it as skipped.
 python_requirements_file: requirements-system-python.txt
+
+# Debian package names do not always follow `python3-<pypi-name>`. Every entry
+# here overrides the default mapping because the project ships under a
+# different name (pyserial -> python3-serial) or uses dotted names
+# (sphinxcontrib-htmlhelp -> python3-sphinxcontrib.htmlhelp). Verify a mapping
+# with `apt-cache policy <name>`: a real package shows a version as Candidate,
+# a virtual one shows "(none)".
+python_apt_name_overrides:
+  argon2-cffi: python3-argon2
+  argon2-cffi-bindings: python3-argon2
+  attrs: python3-attr
+  beautifulsoup4: python3-bs4
+  jsonpointer: python3-json-pointer
+  markdown-it-py: python3-markdown-it
+  numpy-stl: python3-stl
+  pillow: python3-pil
+  pycairo: python3-cairo
+  pyqt6-qt6: python3-pyqt6
+  pyqt6-sip: python3-pyqt6.sip
+  pyserial: python3-serial
+  python-dateutil: python3-dateutil
+  python-json-logger: python3-pythonjsonlogger
+  pyyaml: python3-yaml
+  pyzmq: python3-zmq
+  sphinxcontrib-applehelp: python3-sphinxcontrib.applehelp
+  sphinxcontrib-devhelp: python3-sphinxcontrib.devhelp
+  sphinxcontrib-htmlhelp: python3-sphinxcontrib.htmlhelp
+  sphinxcontrib-jsmath: python3-sphinxcontrib.jsmath
+  sphinxcontrib-qthelp: python3-sphinxcontrib.qthelp
+  sphinxcontrib-serializinghtml: python3-sphinxcontrib.serializinghtml
+  websocket-client: python3-websocket
+  zope-deprecation: python3-zope.deprecation
+  zope-interface: python3-zope.interface

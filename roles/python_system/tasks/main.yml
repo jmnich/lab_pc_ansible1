@@ -1,18 +1,32 @@
 ---
 - name: Read pinned PyPI package names from the reference freeze
   ansible.builtin.set_fact:
-    python_pypi_names: "{{ lookup('ansible.builtin.file', role_path ~ '/files/' ~ python_requirements_file).splitlines() | map('regex_replace', '^\\s+|\\s+$', '') | reject('match', '^\\s*(#|$)') | map('regex_replace', '\\[.*?\\]', '') | map('regex_replace', '==.*$', '') | map('lower') | map('regex_replace', '[-_.]+', '-') | map('regex_replace', '^(.+)$', 'python3-\\1') | unique | list }}"
+    python_pypi_names: "{{ lookup('ansible.builtin.file', role_path ~ '/files/' ~ python_requirements_file).splitlines() | map('regex_replace', '^\\s+|\\s+$', '') | reject('match', '^\\s*(#|$)') | map('regex_replace', '\\[.*?\\]', '') | map('regex_replace', '==.*$', '') | map('lower') | map('regex_replace', '[-_.]+', '-') | unique | list }}"
 
-- name: Check which python3-* apt packages exist in the repositories
-  ansible.builtin.command: apt-cache show {{ item }}
-  loop: "{{ python_pypi_names }}"
+# Default Debian name is python3-<pypi-name>; python_apt_name_overrides fixes
+# the cases where that is wrong. Build one mapping, then resolve every name
+# through it so a package is never both skipped and installed under an alias.
+- name: Resolve each PyPI name to its Debian package name
+  ansible.builtin.set_fact:
+    python_apt_map: "{{ dict(python_pypi_names | zip(python_pypi_names | map('regex_replace', '^(.+)$', 'python3-\\1'))) | combine(python_apt_name_overrides) }}"
+
+# `apt-cache policy` is used instead of `apt-cache show`: show also matches
+# virtual packages that have no install candidate (e.g. python3-pillow), which
+# `apt-get install` may then silently resolve to a different provider.
+- name: Check which python3-* apt packages have an install candidate
+  ansible.builtin.command:
+    argv:
+      - apt-cache
+      - policy
+      - "{{ item }}"
+  loop: "{{ python_pypi_names | map('extract', python_apt_map) | list }}"
   register: python_apt_check
   failed_when: false
   changed_when: false
 
-- name: Select available python3-* apt packages
+- name: Select installable python3-* apt packages
   ansible.builtin.set_fact:
-    python_apt_install: "{{ python_apt_check.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+    python_apt_install: "{{ python_apt_check.results | selectattr('rc', 'equalto', 0) | selectattr('stdout', 'search', 'Candidate:') | rejectattr('stdout', 'search', 'Candidate:\\s+\\(none\\)') | map(attribute='item') | unique | list }}"
 
 - name: Install available Python packages from apt (python3-*)
   ansible.builtin.apt:
@@ -20,6 +34,11 @@
     state: present
   when: python_apt_install | length > 0
 
-- name: Report PyPI packages skipped (no python3-* apt equivalent)
+- name: Determine PyPI packages with no installable apt package
+  ansible.builtin.set_fact:
+    python_apt_skipped: "{{ (python_pypi_names | map('extract', python_apt_map) | unique | list) | difference(python_apt_install) }}"
+
+- name: Report PyPI packages skipped (no installable apt package)
   ansible.builtin.debug:
-    msg: "Skipped (no apt package): {{ python_pypi_names | difference(python_apt_install) | join(', ') }}"
+    msg: "Skipped (no apt candidate): {{ python_apt_skipped | join(', ') }}"
+  when: python_apt_skipped | length > 0

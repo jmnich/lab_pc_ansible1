@@ -39,10 +39,12 @@ What this repository deliberately does NOT manage:
 2. To remove an app fleet-wide, move it from the install list to
    `apt_packages_absent` (apt) or `flatpak_packages_absent` (Flatpak).
 3. To change the Python package set, update
-   `roles/python_system/files/requirements-system-python.txt` (a
-   `pip freeze` output). Packages with a `python3-*` apt equivalent are
-   installed; the rest are skipped automatically. Python packages are
-   NEVER pip-installed into system Python (PEP 668).
+   `roles/python_system/files/requirements-system-python.txt` (a `pip
+   freeze` output filtered to packages that have an installable `python3-*`
+   apt candidate). Anything without an apt package is not listed: Python
+   packages are NEVER pip-installed into system Python (PEP 668). Debian
+   name mismatches belong in `python_apt_name_overrides` in the role
+   defaults.
 4. Firefox extensions: edit `roles/firefox_extensions/defaults/main.yml`.
    Terminal/shell defaults: edit `roles/desktop_defaults/defaults/main.yml`.
 5. Commit and push to `main`.

@@ -93,9 +93,10 @@ description of the same system.
   `org.mozilla.firefox` back to the Flatpak list; the Flatpak build ignores
   enterprise policies.
 - **Python package set**: edit
-  `roles/python_system/files/requirements-system-python.txt` (keep it a
-  `pip freeze` output). apt-available `python3-*` packages are installed,
-  the rest are skipped — check the debug output of a run for skips.
+  `roles/python_system/files/requirements-system-python.txt` (a `pip
+  freeze` output filtered to packages that have an installable `python3-*`
+  apt candidate; Debian name mismatches go in `python_apt_name_overrides`).
+  A listed package that loses its apt candidate is skipped and reported.
 
 ## Git workflow
 
