@@ -5,8 +5,13 @@
 firefox_policies_dir: /etc/firefox/policies
 
 # Extensions force-installed for every user. `id` is the AMO extension ID.
+#
+# install_url MUST use the AMO *slug* (/downloads/latest/<slug>/latest.xpi),
+# NOT the extension GUID: the GUID-based /latest/ form 404s for some addons
+# (e.g. uBlock Origin's GUID returns 404 while the slug works), which makes
+# Firefox silently skip the force-install.
 firefox_forced_extensions:
-  - id: jid1-MnnxcxisBPnSXQ@jetpack     # Privacy Badger
-    install_url: https://addons.mozilla.org/firefox/downloads/latest/jid1-MnnxcxisBPnSXQ@jetpack/latest.xpi
-  - id: cjpalhdlnbpafiamejdnhcphjbkeiagm # uBlock Origin
-    install_url: https://addons.mozilla.org/firefox/downloads/latest/cjpalhdlnbpafiamejdnhcphjbkeiagm/latest.xpi
+  - id: jid1-MnnxcxisBPnSXQ@jetpack     # Privacy Badger (slug: privacy-badger17)
+    install_url: https://addons.mozilla.org/firefox/downloads/latest/privacy-badger17/latest.xpi
+  - id: cjpalhdlnbpafiamejdnhcphjbkeiagm # uBlock Origin (slug: ublock-origin)
+    install_url: https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi
