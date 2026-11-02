@@ -110,22 +110,65 @@
     headers: "{{ download_headers }}"
     timeout: 120
 
+# The .debs are not rebuilt for new bases, so resolve their dependencies here
+# by name. Without this, `apt: deb:` fails with an opaque "unmet dependencies"
+# that only shows up as a failed unit in the journal.
+- name: Install Adept runtime dependencies
+  ansible.builtin.apt:
+    name: "{{ digilent_adept_apt_deps }}"
+    state: present
+
+- name: Install WaveForms dependencies (Qt6 names vary by base)
+  ansible.builtin.apt:
+    name: "{{ digilent_waveforms_apt_deps + digilent_qt6_packages[ansible_distribution_major_version] }}"
+    state: present
+
 # Adept MUST be installed before WaveForms: the WaveForms binary links against
-# the Adept runtime libraries (libdpcomm etc.) at load time.
+# the Adept runtime libraries (libdpcomm etc.) at load time, and its Depends
+# line requires digilent.adept.runtime >= digilent_adept_min_version.
 - name: Install Digilent Adept runtime
   ansible.builtin.apt:
     deb: "{{ digilent_deb_dir }}/{{ digilent_adept_url | basename }}"
   register: digilent_adept_install
+
+# Assert rather than assume: if Adept silently failed, installing WaveForms
+# produces a second, more confusing failure and leaves the laptop half set up.
+- name: Read installed Adept runtime version
+  ansible.builtin.command:
+    argv:
+      - dpkg-query
+      - -W
+      - -f=${Status} ${Version}
+      - digilent.adept.runtime
+  register: digilent_adept_query
+  changed_when: false
+  failed_when: false
+
+- name: Fail early when the Adept runtime is missing or too old
+  ansible.builtin.assert:
+    that:
+      - "'install ok installed' in digilent_adept_query.stdout"
+      - "(digilent_adept_query.stdout.split() | last) is version(digilent_adept_min_version, '>=')"
+    fail_msg: >-
+      Digilent Adept runtime is not usable: dpkg reports
+      "{{ digilent_adept_query.stdout | default('nothing') }}", but WaveForms
+      requires digilent.adept.runtime >= {{ digilent_adept_min_version }}.
+      WaveForms was NOT installed. Check the Adept install output above.
+    quiet: true
 
 - name: Install Digilent WaveForms
   ansible.builtin.apt:
     deb: "{{ digilent_deb_dir }}/{{ digilent_waveforms_url | basename }}"
   register: digilent_waveforms_install
 
+# Adept's own postinst reloads udev, but only when it is (re)installed. Trigger
+# on every run where Adept is present: after a kernel update the rules must be
+# re-applied even though neither .deb changed. This also keeps the reload from
+# being skipped when WaveForms is already up to date.
 - name: Reload udev rules for Digilent devices
   ansible.builtin.command: udevadm control --reload-rules
-  when: digilent_adept_install.changed or digilent_waveforms_install.changed
+  changed_when: false
 
 - name: Re-trigger udev for plugged-in Digilent devices
   ansible.builtin.command: udevadm trigger
-  when: digilent_adept_install.changed or digilent_waveforms_install.changed
+  changed_when: false

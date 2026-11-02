@@ -18,6 +18,9 @@ description of the same system.
 ├── roles/firefox_extensions/  # forced Firefox extensions via policies.json
 ├── roles/python_system/       # python3-* apt packages from a pip-freeze list
 ├── roles/vendor_apps/         # lazygit, FTS Data Explorer, Digilent WaveForms+Adept
+├── roles/opencode/            # opencode binary (pinned + checksummed)
+├── roles/lab_update/          # installs /usr/local/bin/lab_update
+├── files/lab_update           # converge now / --status helper script
 ├── files/ansible-pull.service # systemd unit; contains a literal REPO_URL placeholder
 ├── files/ansible-pull.timer   # systemd timer (1 h, 1 min after boot)
 ├── requirements.yml           # pinned collections (community.general 4.8.1)
@@ -71,9 +74,13 @@ description of the same system.
     run must show no unexpected changes (idempotency check).
 - **Set up a new laptop**: `sudo scripts/bootstrap.sh` from a checkout
   (installs ansible+git, installs/enables the systemd timer, converges once).
-- **Check a laptop's status**: `systemctl status ansible-pull.service` and
-  `journalctl -u ansible-pull.service -n 50`. A failed run (e.g. offline)
-  is harmless; the next timer tick retries.
+- **Check a laptop's status**: `sudo lab_update --status` (last convergence and
+  its age, the applied commit, next run, and every managed package marked
+  ok/outdated/missing/newer). `sudo lab_update` converges immediately by
+  starting `ansible-pull.service` — never run a second `ansible-pull` by hand,
+  or it can collide with the timer on the pull directory and apt locks.
+  For raw output: `journalctl -u ansible-pull.service -n 50`. A failed run
+  (e.g. offline) is harmless; the next timer tick retries.
 - **Change the timer interval or pull behavior**: edit
   `files/ansible-pull.timer` / the `ExecStart` line in
   `files/ansible-pull.service` (keeping the `REPO_URL` placeholder), then
@@ -98,8 +105,19 @@ description of the same system.
   lazygit/FTS come from GitHub release assets; the Digilent .debs come from
   files.digilent.com (Cloudflare-fronted, the role sends a browser UA — if a
   download is ever challenged, fetch the .deb manually once). Adept MUST be
-  installed before WaveForms. Codium is a Flatpak (`com.vscodium.codium`)
-  with a `/usr/local/bin/codium` symlink so it works before re-login.
+  installed before WaveForms, and the role asserts the installed Adept version
+  before touching WaveForms. The Digilent .debs are not rebuilt per base, so
+  their dependencies are installed explicitly first; the Qt6 libraries were
+  renamed to `*t64` on Mint 22 and the mapping lives in
+  `digilent_qt6_packages` — add the new base there before a fleet upgrade.
+  Codium is a Flatpak (`com.vscodium.codium`) with a
+  `/usr/local/bin/codium` symlink so it works before re-login.
+- **opencode** (`roles/opencode`): pinned version + SHA-256 in its
+  `defaults/main.yml`. Do NOT replace this with the upstream
+  `curl https://opencode.ai/install | bash`: it installs into `$HOME` (root's
+  home under ansible-pull), exits the shell on a version match, and downloads
+  without a checksum. Bump the version and BOTH hashes together (the release
+  publishes no `.sha256` sidecar); a mismatch fails the run.
 - **Python package set**: edit
   `roles/python_system/files/requirements-system-python.txt` (a `pip
   freeze` output filtered to packages that have an installable `python3-*`

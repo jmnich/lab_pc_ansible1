@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+#
+# lab_update - converge this laptop with the lab configuration repository.
+#
+#   sudo lab_update            apply the configuration now, wait for it
+#   sudo lab_update --no-wait  start it and return immediately
+#   lab_update --status        show convergence state and managed software
+#
+# Convergence runs through ansible-pull.service rather than a second
+# ansible-pull invocation: the unit already carries the environment the run
+# needs (GIT_TERMINAL_PROMPT, ANSIBLE_HOST_PATTERN_MISMATCH, the 2h timeout),
+# and systemd serialises it against the hourly timer so a manual run and a
+# timer tick cannot collide on the pull directory or the apt lock.
+
+set -euo pipefail
+
+PULL_DIR="/var/lib/ansible-pull"
+SERVICE="ansible-pull.service"
+TIMER="ansible-pull.timer"
+
+usage() {
+    cat <<'EOF'
+Usage: sudo lab_update [OPTIONS]
+       lab_update --status
+
+Apply the lab configuration to this laptop immediately.
+
+Options:
+  --status     Show the last convergence, its age, and the managed software
+               list with each entry marked ok / outdated / missing.
+  --no-wait    Start the convergence and return without waiting for it.
+  --verbose    With a convergence run, show raw ansible output instead of
+               the condensed progress lines.
+  -h, --help   Show this help.
+
+Without --status the command must be run with sudo.
+EOF
+}
+
+die() { printf 'lab_update: %s\n' "$*" >&2; exit 1; }
+
+# --- status ------------------------------------------------------------------
+
+# Read one property of the service unit, empty if systemd has no value.
+unit_prop() {
+    systemctl show "$SERVICE" -p "$1" --value 2>/dev/null || true
+}
+
+# "2026-11-02 09:14" -> epoch seconds; empty if the input is not a timestamp.
+to_epoch() {
+    [ -n "$1" ] || return 0
+    date -d "$1" +%s 2>/dev/null || true
+}
+
+# Human age from an epoch second count: "2h ago", "43m ago", "just now".
+age_ago() {
+    local then="$1" now
+    [ -n "$then" ] || { printf 'never'; return; }
+    now=$(date +%s)
+    local d=$(( now - then ))
+    [ "$d" -lt 0 ] && d=0
+    if   [ "$d" -lt 60 ];    then printf 'just now'
+    elif [ "$d" -lt 3600 ];  then printf '%dm ago' "$(( d / 60 ))"
+    elif [ "$d" -lt 86400 ]; then printf '%dh ago' "$(( d / 3600 ))"
+    else                          printf '%dd ago' "$(( d / 86400 ))"
+    fi
+}
+
+# Seconds until an epoch second count: "43m", "2h", "now".
+until_in() {
+    local then="$1" now d
+    [ -n "$then" ] || { printf 'not scheduled'; return; }
+    now=$(date +%s)
+    d=$(( then - now ))
+    [ "$d" -le 0 ] && { printf 'due now'; return; }
+    if   [ "$d" -lt 3600 ];  then printf 'in %dm' "$(( d / 60 ))"
+    elif [ "$d" -lt 86400 ]; then printf 'in %dh' "$(( d / 3600 ))"
+    else                          printf 'in %dd' "$(( d / 86400 ))"
+    fi
+}
+
+print_software() {
+    # Parsed from the checkout the timer actually applies, so the list cannot
+    # drift from what is configured. A missing checkout is reported, not fatal.
+    python3 - "$PULL_DIR" <<'PY'
+import os, subprocess, sys
+
+pull_dir = sys.argv[1]
+
+def load_yaml(path):
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+
+def role_defaults(role):
+    return load_yaml(os.path.join(pull_dir, "roles", role, "defaults", "main.yml"))
+
+def apt_version(name):
+    try:
+        out = subprocess.run(
+            ["dpkg-query", "-W", "-f=${Status} ${Version}", name],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if "install ok installed" not in out:
+        return None
+    parts = out.split()
+    return parts[-1] if parts else None
+
+def flatpak_version(app_id):
+    try:
+        out = subprocess.run(
+            ["flatpak", "list", "--app", "--columns=application,version", "--system"],
+            capture_output=True, text=True, timeout=15,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        cols = line.split("\t")
+        if cols and cols[0].strip() == app_id:
+            return cols[1].strip() if len(cols) > 1 and cols[1].strip() else "installed"
+    return None
+
+def binary_version(path, args):
+    if not os.path.exists(path):
+        return None
+    try:
+        out = subprocess.run([path] + args, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.strip() or "installed"
+
+def deb_version(pkg):
+    try:
+        out = subprocess.run(
+            ["dpkg-query", "-W", "-f=${Status} ${Version}", pkg],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if "install ok installed" not in out:
+        return None
+    parts = out.split()
+    return parts[-1] if parts else None
+
+def mark(configured, installed):
+    if installed is None:
+        return "-", "missing"
+    if configured and installed != configured and configured != "installed":
+        try:
+            newer = [int(x) for x in installed.split(".")[:3]]
+            want = [int(x) for x in str(configured).lstrip("v").split(".")[:3]]
+            if newer > want:
+                return installed, "newer"
+        except (ValueError, AttributeError):
+            pass
+        return installed, "outdated"
+    return installed, "ok"
+rows = []
+
+common = role_defaults("common") or {}
+for pkg in common.get("apt_packages") or []:
+    rows.append((pkg, *mark(None, apt_version(pkg))))
+
+flatpak = role_defaults("flatpak_apps") or {}
+for app in flatpak.get("flatpak_packages") or []:
+    rows.append((app, *mark(None, flatpak_version(app))))
+
+vendor = role_defaults("vendor_apps") or {}
+if vendor:
+    lg = vendor.get("lazygit_version")
+    lg_out = binary_version("/usr/local/bin/lazygit", ["--version"])
+    lg_inst = None
+    if lg_out and "version=" in lg_out:
+        lg_inst = lg_out.split("version=")[1].split(",")[0].strip()
+    elif lg_out:
+        lg_inst = "installed"
+    rows.append(("lazygit", *mark(lg, lg_inst)))
+    fts = vendor.get("fts_release_tag")
+    rows.append(("fts_data_explorer", *mark(fts, "installed" if os.path.exists("/usr/local/bin/fts_data_explorer") else None)))
+    adept = deb_version("digilent.adept.runtime")
+    rows.append(("digilent.adept.runtime", *mark(None, adept)))
+    wf = deb_version("digilent.waveforms")
+    rows.append(("digilent.waveforms", *mark(None, wf)))
+
+oc = role_defaults("opencode") or {}
+if oc:
+    ver = oc.get("opencode_version")
+    inst = binary_version("/usr/local/bin/opencode", ["--version"])
+    rows.append(("opencode", *mark(ver, inst)))
+
+py = role_defaults("python_system") or {}
+if py:
+    req = os.path.join(pull_dir, "roles", "python_system", "files",
+                       py.get("python_requirements_file", "requirements-system-python.txt"))
+    try:
+        with open(req) as f:
+            count = sum(1 for l in f if l.strip() and not l.strip().startswith("#"))
+    except OSError:
+        count = 0
+    if count:
+        rows.append(("python3-* (apt)", *mark(None, "%d packages" % count)))
+
+if not rows:
+    print("  (no configuration found in %s)" % pull_dir)
+    sys.exit(0)
+
+width = max(len(r[0]) for r in rows)
+for name, version, status in rows:
+    print("  %-*s  %-22s  %s" % (width, name, version, status))
+PY
+}
+
+show_status() {
+    local start_epoch result active next_epoch checkout_commit checkout_date
+
+    start_epoch=$(to_epoch "$(unit_prop ExecMainStartTimestamp)")
+    result=$(unit_prop Result)
+    active=$(unit_prop ActiveState)
+
+    # list-timers is the stable interface for the next elapse time.
+    next_epoch=$(systemctl list-timers "$TIMER" --no-legend --no-pager 2>/dev/null \
+        | head -1 | sed -E 's/^[^A-Za-z]*([A-Za-z]{3}) ([0-9]{4}-[0-9]{2}-[0-9]{2}) ([0-9:]+).*/\2 \3/' || true)
+    next_epoch=$(to_epoch "$next_epoch")
+
+    printf 'CONVERGENCE\n'
+    if ! systemctl list-unit-files "$SERVICE" --no-legend --no-pager 2>/dev/null | grep -q .; then
+        printf '  not installed  (run: sudo scripts/bootstrap.sh)\n\n'
+        printf 'SOFTWARE\n'
+        print_software
+        return
+    fi
+
+    if [ -z "$start_epoch" ]; then
+        printf '  last run     never\n'
+    else
+        local state="ok"
+        case "$result" in
+            success) state="ok" ;;
+            "")      [ "$active" = "running" ] && state="running" || state="unknown" ;;
+            *)       state="$result" ;;
+        esac
+        printf '  last run     %s  %-8s (%s)\n' \
+            "$(date -d "@$start_epoch" '+%Y-%m-%d %H:%M')" "$state" "$(age_ago "$start_epoch")"
+    fi
+
+    if [ -d "$PULL_DIR/.git" ]; then
+        checkout_commit=$(git -C "$PULL_DIR" log -1 --format='%h' 2>/dev/null || true)
+        checkout_date=$(git -C "$PULL_DIR" log -1 --format='%cd' --date=format:'%Y-%m-%d %H:%M' 2>/dev/null || true)
+        printf '  checkout     %s  %s\n' "${checkout_commit:-unknown}" "${checkout_date:-unknown}"
+    else
+        printf '  checkout     not present (%s)\n' "$PULL_DIR"
+    fi
+
+    printf '  next run     %s\n\n' "$(until_in "$next_epoch")"
+
+    printf 'SOFTWARE\n'
+    print_software
+}
+
+# --- convergence -------------------------------------------------------------
+
+# Condense the ansible journal stream into one line per role plus a summary.
+# Raw output is preserved with --verbose.
+follow_progress() {
+    local verbose="$1"
+    if [ "$verbose" = "1" ]; then
+        journalctl -u "$SERVICE" -f -n 0 --no-pager --output=cat
+        return
+    fi
+
+    journalctl -u "$SERVICE" -f -n 0 --no-pager --output=cat | awk '
+        /^PLAY \[/ {
+            printf "  fetching repository\n"
+            next
+        }
+        /^TASK \[/ {
+            task = $0
+            sub(/^TASK \[/, "", task)
+            sub(/\] \**$/, "", task)
+            printf "  %-58s\r", substr(task, 1, 58)
+            next
+        }
+        /^PLAY RECAP/ {
+            recap = 1
+            next
+        }
+        recap && /changed=[0-9]+/ {
+            match($0, /changed=[0-9]+/);  ch = substr($0, RSTART+8, RLENGTH-8)
+            match($0, /failed=[0-9]+/);   fa = substr($0, RSTART+7, RLENGTH-7)
+            printf "\r  %-58s\r", ""
+            printf "  done: %s changed, %s failed\n", ch, fa
+            recap = 0
+            next
+        }
+        /^fatal: \[/ || /^ERROR!/ {
+            printf "\r  %-58s\r", ""
+            print "  " $0
+            next
+        }
+    '
+}
+
+run_converge() {
+    local no_wait="$1" verbose="$2"
+
+    [ "$(id -u)" -eq 0 ] || die "must be run with sudo (or use --status)"
+
+    local before
+    before=$(unit_prop ExecMainStartTimestamp)
+
+    printf 'Applying lab configuration...\n'
+    systemctl start "$SERVICE" &
+    local starter=$!
+
+    if [ "$no_wait" = "1" ]; then
+        wait "$starter" || true
+        printf 'Started. Follow with: journalctl -u %s -f\n' "$SERVICE"
+        return 0
+    fi
+
+    # Follow while the unit runs; stop when systemd reports it inactive.
+    local follow_pid=""
+    if command -v journalctl >/dev/null 2>&1; then
+        follow_progress "$verbose" &
+        follow_pid=$!
+    fi
+
+    wait "$starter" || true
+
+    if [ -n "$follow_pid" ]; then
+        # Let the journal flush the final lines before stopping the follower.
+        sleep 1
+        kill "$follow_pid" 2>/dev/null || true
+        wait "$follow_pid" 2>/dev/null || true
+    fi
+
+    local after result
+    after=$(unit_prop ExecMainStartTimestamp)
+    result=$(unit_prop Result)
+
+    if [ "$before" = "$after" ] && [ "$result" = "success" ]; then
+        printf 'Already up to date (no new run was needed).\n'
+        return 0
+    fi
+
+    if [ "$result" = "success" ]; then
+        printf 'Converged successfully.\n'
+        return 0
+    fi
+
+    printf 'Convergence FAILED (%s). See: journalctl -u %s -n 50\n' "${result:-unknown}" "$SERVICE" >&2
+    return 1
+}
+
+# --- main --------------------------------------------------------------------
+
+mode="converge"
+no_wait=0
+verbose=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --status)  mode="status" ;;
+        --no-wait) no_wait=1 ;;
+        --verbose) verbose=1 ;;
+        -h|--help) usage; exit 0 ;;
+        *)         usage >&2; die "unknown option: $1" ;;
+    esac
+    shift
+done
+
+case "$mode" in
+    status)   show_status ;;
+    converge) run_converge "$no_wait" "$verbose" ;;
+esac

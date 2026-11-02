@@ -1,0 +1,85 @@
+---
+# Mirror of the upstream installer's CPU probe: it installs the "baseline"
+# (non-AVX2) build on machines whose /proc/cpuinfo has no avx2 flag.
+- name: Detect AVX2 support for the opencode build selection
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -qwi
+      - avx2
+      - /proc/cpuinfo
+  register: opencode_avx2
+  changed_when: false
+  failed_when: false
+
+- name: Select the opencode release asset and its checksum
+  ansible.builtin.set_fact:
+    opencode_asset: >-
+      {{ 'opencode-linux-x64.tar.gz' if opencode_avx2.rc == 0
+         else 'opencode-linux-x64-baseline.tar.gz' }}
+    opencode_sha256: >-
+      {{ opencode_sha256_avx2 if opencode_avx2.rc == 0
+         else opencode_sha256_baseline }}
+
+# Same shape as the lazygit task earlier in the play: compare the installed
+# version with the pin so a matching install downloads nothing.
+- name: Check installed opencode version
+  ansible.builtin.command: "{{ opencode_install_path }} --version"
+  register: opencode_current
+  failed_when: false
+  changed_when: false
+
+- name: Determine whether opencode needs an update
+  ansible.builtin.set_fact:
+    opencode_outdated: "{{ opencode_current.rc != 0 or (opencode_current.stdout | trim) != opencode_version }}"
+
+- name: Ensure opencode download directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_tarball_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# checksum makes get_url fail on a tampered or re-published asset; it also
+# skips the download when the cached file already matches.
+- name: Download opencode release tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/anomalyco/opencode/releases/download/v{{ opencode_version }}/{{ opencode_asset }}"
+    dest: "{{ opencode_tarball_dir }}/{{ opencode_asset }}"
+    checksum: "sha256:{{ opencode_sha256 }}"
+    mode: "0644"
+    timeout: 300
+  when: opencode_outdated | bool
+
+# Extract to a staging dir: the tarball's single member is `opencode`, but
+# staging keeps /usr/local/bin free of anything else a future release adds.
+- name: Ensure opencode staging directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_tarball_dir }}/{{ opencode_asset }}.extracted"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: opencode_outdated | bool
+
+- name: Extract opencode tarball to staging dir
+  ansible.builtin.unarchive:
+    src: "{{ opencode_tarball_dir }}/{{ opencode_asset }}"
+    dest: "{{ opencode_tarball_dir }}/{{ opencode_asset }}.extracted"
+    remote_src: true
+  when: opencode_outdated | bool
+
+- name: Install opencode binary
+  ansible.builtin.copy:
+    src: "{{ opencode_tarball_dir }}/{{ opencode_asset }}.extracted/opencode"
+    dest: "{{ opencode_install_path }}"
+    remote_src: true
+    mode: "0755"
+  when: opencode_outdated | bool
+
+- name: Verify the installed opencode runs and reports the pinned version
+  ansible.builtin.command: "{{ opencode_install_path }} --version"
+  register: opencode_verify
+  changed_when: false
+  failed_when: (opencode_verify.stdout | trim) != opencode_version

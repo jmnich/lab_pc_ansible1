@@ -1,0 +1,11 @@
+---
+# Installs the lab_update helper: immediate convergence and a status view.
+# The script itself lives in files/lab_update at the repository root so it can
+# also be read without a checkout; this role only places it on the PATH.
+- name: Install lab_update helper
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/files/lab_update"
+    dest: /usr/local/bin/lab_update
+    owner: root
+    group: root
+    mode: "0755"

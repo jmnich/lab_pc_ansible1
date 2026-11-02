@@ -25,9 +25,14 @@ variable at the top of `scripts/bootstrap.sh`.
   enterprise policies on the distro Firefox (`roles/firefox_extensions`)
 - Python packages for the system Python, installed from apt as
   `python3-*` (see `roles/python_system`)
-- Vendor/upstream apps installed as system binaries: lazygit and FTS Data
-  Explorer (GitHub releases) and Digilent WaveForms + Adept runtime
-  (vendor .debs, pinned URLs in `roles/vendor_apps/defaults/main.yml`)
+- opencode, as a system binary in `/usr/local/bin` (`roles/opencode`). The
+  upstream `curl | bash` installer is deliberately NOT used: it installs into
+  the invoking user's home (root's, under ansible-pull) and exits the shell
+  when the version already matches.
+- Vendor/upstream apps installed as system binaries: lazygit, FTS Data
+  Explorer and opencode (GitHub releases, pinned + checksummed) and Digilent
+  WaveForms + Adept runtime (vendor .debs, pinned URLs in
+  `roles/vendor_apps/defaults/main.yml`)
 
 What this repository deliberately does NOT manage:
 
@@ -67,11 +72,24 @@ and applies the configuration immediately. Nothing else is required.
 
 ## How to check status on a laptop
 
-    systemctl status ansible-pull.service
-    journalctl -u ansible-pull.service -n 50
+    sudo lab_update --status
+
+Shows the last convergence and how long ago it ran, the commit the timer last
+applied, the next scheduled run, and every managed package marked `ok`,
+`outdated`, `missing` or `newer`.
+
+To apply the configuration immediately instead of waiting for the next hourly
+run:
+
+    sudo lab_update
+
+It blocks until the run finishes and shows progress. `--no-wait` starts it and
+returns; `--verbose` shows the raw Ansible output.
 
 A failed run (for example, while the laptop was offline) is harmless;
-the next timer tick retries automatically.
+the next timer tick retries automatically. For the raw log:
+
+    journalctl -u ansible-pull.service -n 50
 
 ## How to install something on just one laptop
 

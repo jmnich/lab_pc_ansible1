@@ -27,94 +27,82 @@ TIMER_DST="/etc/systemd/system/ansible-pull.timer"
 
 SECONDS=0
 
-log()  { printf '[bootstrap %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
-step() { printf '\n[bootstrap %s] === %s ===\n' "$(date +%H:%M:%S)" "$*"; }
-fail() { printf '[bootstrap %s] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
+# Output is deliberately terse: one line per step, saying what happened rather
+# than restating what the next command will do. Failures stay loud.
+log()  { printf '  %s\n' "$*"; }
+step() { printf '%-42s' "$*"; }
+done_() { printf 'ok\n'; }
+fail() { printf 'FAILED\n' >&2; printf '  %s\n' "$*" >&2; exit 1; }
 
 trap 'fail "bootstrap failed at line $LINENO"' ERR
 
 # --- 0. Sanity checks -------------------------------------------------------
 
-step "0/6 Checking prerequisites"
-
+step "Checking prerequisites"
 [ "$(id -u)" -eq 0 ] || fail "must be run as root (sudo scripts/bootstrap.sh)"
-log "running as root, OK"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
-log "repository checkout: $REPO_DIR"
 
 [ -f "$SERVICE_SRC" ]    || fail "missing $SERVICE_SRC (run from a checkout of the repository)"
 [ -f "$TIMER_SRC" ]      || fail "missing $TIMER_SRC (run from a checkout of the repository)"
 [ -f local.yml ]         || fail "missing local.yml (run from a checkout of the repository)"
 [ -f requirements.yml ]  || fail "missing requirements.yml (run from a checkout of the repository)"
-log "required files present, OK"
+done_
 
 # --- 1. Install ansible and git --------------------------------------------
 
-step "1/6 Installing Ansible, Git and the community.general collection"
-
-log "updating the apt package cache (about a minute)"
-apt-get update
-
-log "installing ansible + git (a few minutes on a fresh laptop)"
-DEBIAN_FRONTEND=noninteractive apt-get install -y ansible git
+step "Installing Ansible + Git"
+apt-get update >/dev/null 2>&1 || fail "apt-get update failed (check the network)"
+DEBIAN_FRONTEND=noninteractive apt-get install -y ansible git >/dev/null 2>&1 \
+    || fail "could not install ansible and git"
 
 command -v ansible-pull >/dev/null 2>&1 || fail "ansible-pull not found after installing ansible"
-log "ansible-pull available at $(command -v ansible-pull)"
 
 # Ensure the community.general collection is available (needed by the
 # flatpak_apps role). Prefer the distro package if it exists; otherwise
 # install the pinned version from requirements.yml (compatible with the
 # ansible-core shipped by the Mint/Ubuntu base).
 if apt-cache show ansible-collection-community-general >/dev/null 2>&1; then
-    log "installing community.general from the distro package"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-collection-community-general
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ansible-collection-community-general >/dev/null 2>&1 \
+        || fail "could not install ansible-collection-community-general"
 else
     # Always enforce the pin (idempotent: skips when already satisfied),
     # even if some other community.general version is already present.
-    log "installing pinned collections from requirements.yml"
-    ansible-galaxy collection install -r requirements.yml
+    ansible-galaxy collection install -r requirements.yml >/dev/null 2>&1 \
+        || fail "could not install the pinned collections from requirements.yml"
 fi
+done_
 
 # --- 2. Create the pull directory -------------------------------------------
 
-step "2/6 Preparing the pull directory"
-
-log "creating $PULL_DIR (where ansible-pull keeps its checkout)"
+step "Preparing the pull directory"
 mkdir -p "$PULL_DIR"
+done_
 
 # --- 3. Install systemd units (substituting REPO_URL into the service) ------
 
-step "3/6 Installing the systemd service and timer"
-
-log "installing systemd units (REPO_URL=$REPO_URL)"
+step "Installing systemd units"
 # Escape sed replacement metacharacters (& and the | delimiter) in the URL.
 REPO_URL_ESCAPED="$(printf '%s' "$REPO_URL" | sed 's/[&|]/\\&/g')"
 sed "s|REPO_URL|$REPO_URL_ESCAPED|g" "$SERVICE_SRC" > "$SERVICE_DST"
 install -m 0644 "$TIMER_SRC" "$TIMER_DST"
 chmod 0644 "$SERVICE_DST"
-log "wrote $SERVICE_DST and $TIMER_DST"
+done_
 
 # --- 4. Reload systemd ------------------------------------------------------
 
-step "4/6 Reloading systemd"
-
-log "reloading systemd so it picks up the new units"
+step "Reloading systemd"
 systemctl daemon-reload
-log "systemd reloaded"
+done_
 
 # --- 5. Apply the configuration once, immediately ---------------------------
 # Start the service (not a second manual ansible-pull) so the converge and
 # the timer can never overlap on the same pull directory / apt locks.
 
-step "5/6 Applying the configuration (first converge)"
-
-log "this is the long step: it clones the repo and installs/updates software"
-log "live ansible output follows; typically 2-10 minutes on a fresh laptop"
-log "you can also follow it from another terminal with:"
-log "    journalctl -u ansible-pull.service -f"
+step "Applying configuration (2-10 min)"
+printf '\n'
 
 converge_ok=1
 journal_pid=""
@@ -127,7 +115,7 @@ if command -v journalctl >/dev/null 2>&1; then
     journal_pid=$!
     sleep 1
 else
-    log "journalctl not available; waiting for the converge without live output"
+    log "journalctl not available; waiting without live output"
 fi
 
 # A failure here must NOT prevent the timer from being enabled: otherwise a
@@ -142,9 +130,9 @@ if [ -n "$journal_pid" ]; then
     wait "$journal_pid" 2>/dev/null || true
 fi
 
+printf '\n'
 if [ "$converge_ok" -eq 0 ]; then
-    log "WARNING: the converge reported failures (see output above)"
-    log "the timer will still be enabled below, so the next run retries automatically"
+    log "converge reported failures; the timer will retry within the hour"
 else
     log "converge finished without failures"
 fi
@@ -153,19 +141,13 @@ fi
 # Enabled only after the manual converge attempt, so the first timer tick
 # cannot race with it.
 
-step "6/6 Enabling the hourly timer"
-
-log "enabling ansible-pull.timer (runs every hour, 1 min after boot)"
+step "Enabling the hourly timer"
 systemctl enable --now ansible-pull.timer
-
-log "scheduled runs:"
-systemctl list-timers ansible-pull.timer --no-pager 2>/dev/null || true
+done_
 
 if [ "$converge_ok" -eq 0 ]; then
-    fail "first ansible-pull converge failed; the timer is enabled and will retry within the hour"
+    fail "first converge failed; the timer is enabled and will retry within the hour"
 fi
 
-log "SUCCESS: laptop is configured; ansible-pull re-applies this repo every hour"
-log "check status: systemctl status ansible-pull.service"
-log "check logs:   journalctl -u ansible-pull.service -n 50"
-log "total time:   $((SECONDS / 60))m$((SECONDS % 60))s"
+printf '\nDone in %dm%02ds. Re-applies every hour.\n' "$((SECONDS / 60))" "$((SECONDS % 60))"
+printf 'Check status: sudo lab_update --status\n'

@@ -1,0 +1,25 @@
+---
+# opencode: single static binary from GitHub releases (no apt/Flathub package).
+#
+# We deliberately do NOT run https://opencode.ai/install here. That script:
+#   - installs to $HOME/.opencode/bin, which under ansible-pull is ROOT's home
+#     and invisible to lab users;
+#   - calls `exit 0` when the version already matches, which would terminate
+#     the Ansible task;
+#   - appends PATH exports to the invoking user's shell rc files (root's);
+#   - downloads unpinned, with no checksum.
+# This role reproduces only the download-and-place step, pinned and verified.
+opencode_version: "1.19.5"
+opencode_install_path: /usr/local/bin/opencode
+opencode_tarball_dir: /var/cache/lab-downloads
+
+# Release asset checksums for opencode_version. Bump BOTH the version and these
+# hashes together; a mismatch fails the run instead of installing an unverified
+# binary. The upstream release publishes no .sha256 sidecar, so these are
+# recorded by hand from the downloaded assets.
+#
+# opencode-linux-x64.tar.gz        (CPUs with AVX2)
+opencode_sha256_avx2: "588310a336fa3b9df36b3f0225b26f679d453efaad0cf3d66c3651ef3ec1647a"
+# opencode-linux-x64-baseline.tar.gz (CPUs without AVX2; the installer picks
+# this build on the same probe, so the fleet needs both hashes)
+opencode_sha256_baseline: "17c200fd4b2289954cc01552559f9b6d03ec157b2ddfb5eb54144f491656333d"
