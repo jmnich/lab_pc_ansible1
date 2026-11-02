@@ -31,8 +31,12 @@
     dest: "{{ lazygit_tarball_dest }}"
     mode: "0644"
     timeout: 120
-    retries: 3
-    delay: 10
+  # Task-level keywords, NOT module arguments: get_url has no retries/delay
+  # parameters, and putting them in the block above fails the task outright.
+  retries: 3
+  delay: 10
+  register: lazygit_download
+  until: lazygit_download is not failed
   when: lazygit_outdated | bool
 
 # Extract to a staging dir first: the tarball also contains LICENSE/README,
@@ -75,11 +79,16 @@
     dest: "{{ fts_install_path }}"
     mode: "0755"
     timeout: 120
-    retries: 3
-    delay: 10
+  # Task-level keywords, not module arguments (see the lazygit task above).
+  retries: 3
+  delay: 10
+  register: fts_download
+  until: fts_download is not failed
 
 # The binary reports no version, so record which release tag was installed.
 # lab_update --status reads this file to tell "installed" from "outdated".
+# Gated on the binary actually being present: writing the marker after a failed
+# download would make --status report a version for a binary that is not there.
 - name: Record the installed FTS Data Explorer release tag
   ansible.builtin.copy:
     dest: "{{ fts_install_path }}.version"
@@ -87,6 +96,7 @@
     group: root
     mode: "0644"
     content: "{{ fts_release_tag }}\n"
+  when: fts_download is not failed
 
 - name: Install FTS Data Explorer desktop entry
   ansible.builtin.copy:

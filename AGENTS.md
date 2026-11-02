@@ -57,7 +57,10 @@ role has been attempted. Consequences to preserve:
   role" state: a laptop silently drifting out of sync is worse than a visible
   hourly failure.
 - **Network tasks get `retries`/`delay`** (`get_url` in `vendor_apps` and
-  `opencode`): transient blips should not become permanent failures.
+  `opencode`): transient blips should not become permanent failures. These are
+  **task-level keywords**, not module arguments — `get_url` has no `retries`
+  or `delay` parameters, and putting them inside the module block fails the
+  task with "Unsupported parameters". Pair them with `register` + `until`.
 - **Do not write `ansible.builtin.shell` tasks.** Ansible runs them under
   `/bin/sh`, which is dash on Mint, so bashisms like `${var//a/b}` fail there
   with "Bad substitution" while passing on machines where `/bin/sh` is bash.

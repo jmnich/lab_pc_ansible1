@@ -50,8 +50,11 @@
     checksum: "sha256:{{ opencode_sha256 }}"
     mode: "0644"
     timeout: 300
-    retries: 3
-    delay: 10
+  # Task-level keywords, not module arguments (see vendor_apps).
+  retries: 3
+  delay: 10
+  register: opencode_download
+  until: opencode_download is not failed
   when: opencode_outdated | bool
 
 # Extract to a staging dir: the tarball's single member is `opencode`, but

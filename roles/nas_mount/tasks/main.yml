@@ -58,12 +58,14 @@
       - "  3. Run: sudo lab_update"
   when: nas_host | length == 0 or not nas_credentials.stat.exists
 
+# Ownership is deliberately NOT managed here. Once the share is mounted, the
+# CIFS uid=/gid= options decide what the mount point appears to be owned by,
+# so asserting root:root here would flip back and forth and report "changed"
+# on every single run.
 - name: Create the NAS mount point
   ansible.builtin.file:
     path: "{{ nas_mount_path }}"
     state: directory
-    owner: root
-    group: root
     mode: "0755"
   when: nas_host | length > 0 and nas_credentials.stat.exists
 
