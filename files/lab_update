@@ -150,18 +150,30 @@ def deb_version(pkg):
     parts = out.split()
     return parts[-1] if parts else None
 
+def _ver_tuple(text):
+    """Numeric parts of a version-ish string: 'v.26.10.1' -> (26, 10, 1)."""
+    parts = []
+    for chunk in str(text).lstrip("vV").replace("-", ".").replace("_", ".").split("."):
+        chunk = chunk.strip()
+        if chunk.isdigit():
+            parts.append(int(chunk))
+        elif chunk:
+            break
+    return tuple(parts)
+
+
 def mark(configured, installed):
     if installed is None:
         return "-", "missing"
     if configured and installed != configured and configured != "installed":
         try:
-            newer = [int(x) for x in installed.split(".")[:3]]
-            want = [int(x) for x in str(configured).lstrip("v").split(".")[:3]]
-            if newer > want:
-                return installed, "newer"
+            have = _ver_tuple(installed)
+            want = _ver_tuple(configured)
+            if have and want and have != want:
+                return installed, "newer" if have > want else "outdated"
         except (ValueError, AttributeError):
             pass
-        return installed, "outdated"
+        return installed, "ok"
     return installed, "ok"
 rows = []
 
@@ -183,12 +195,19 @@ if vendor:
     elif lg_out:
         lg_inst = "installed"
     rows.append(("lazygit", *mark(lg, lg_inst)))
+    # FTS ships a bare binary with no version output, so the release tag is
+    # the only version signal. The tag is a git ref ("v.26.10.1"), not a
+    # semver, so it is compared as a plain string against a marker file that
+    # records which tag was installed.
     fts = vendor.get("fts_release_tag")
-    rows.append(("fts_data_explorer", *mark(fts, "installed" if os.path.exists("/usr/local/bin/fts_data_explorer") else None)))
-    adept = deb_version("digilent.adept.runtime")
-    rows.append(("digilent.adept.runtime", *mark(None, adept)))
-    wf = deb_version("digilent.waveforms")
-    rows.append(("digilent.waveforms", *mark(None, wf)))
+    fts_inst = None
+    if os.path.exists("/usr/local/bin/fts_data_explorer"):
+        try:
+            with open("/usr/local/bin/fts_data_explorer.version") as f:
+                fts_inst = f.read().strip() or "installed"
+        except OSError:
+            fts_inst = "installed"
+    rows.append(("fts_data_explorer", *mark(fts, fts_inst)))
 
 oc = role_defaults("opencode") or {}
 if oc:
@@ -212,9 +231,20 @@ if not rows:
     print("  (no configuration found in %s)" % pull_dir)
     sys.exit(0)
 
-width = max(len(r[0]) for r in rows)
+# Fixed-width columns so one long package name (libreoffice-l10n-pl) cannot
+# push every other row out of alignment. Names longer than the column are
+# truncated with an ellipsis; the full name is never needed to identify a row.
+NAME_W = 26
+VER_W = 20
+
+
+def fit(text, width):
+    text = str(text)
+    return text if len(text) <= width else text[: width - 1] + "\u2026"
+
+
 for name, version, status in rows:
-    print("  %-*s  %-22s  %s" % (width, name, version, status))
+    print("  %-*s  %-*s  %s" % (NAME_W, fit(name, NAME_W), VER_W, fit(version, VER_W), status))
 PY
 }
 

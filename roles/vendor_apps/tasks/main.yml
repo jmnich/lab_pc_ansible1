@@ -74,6 +74,16 @@
     mode: "0755"
     timeout: 120
 
+# The binary reports no version, so record which release tag was installed.
+# lab_update --status reads this file to tell "installed" from "outdated".
+- name: Record the installed FTS Data Explorer release tag
+  ansible.builtin.copy:
+    dest: "{{ fts_install_path }}.version"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ fts_release_tag }}\n"
+
 - name: Install FTS Data Explorer desktop entry
   ansible.builtin.copy:
     dest: /usr/share/applications/fts-data-explorer.desktop

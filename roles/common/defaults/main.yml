@@ -11,6 +11,7 @@ apt_packages:
   - libreoffice-help-pl
   - hunspell-pl
   - gimp
+  - inkscape
   - kitty
   - fish
   - cutecom   # GUI serial-port (COM) terminal
