@@ -30,9 +30,8 @@ variable at the top of `scripts/bootstrap.sh`.
   the invoking user's home (root's, under ansible-pull) and exits the shell
   when the version already matches.
 - Vendor/upstream apps installed as system binaries: lazygit, FTS Data
-  Explorer and opencode (GitHub releases, pinned + checksummed) and Digilent
-  WaveForms + Adept runtime (vendor .debs, pinned URLs in
-  `roles/vendor_apps/defaults/main.yml`)
+  Explorer and opencode (GitHub releases, pinned + checksummed), with URLs in
+  `roles/vendor_apps/defaults/main.yml` and `roles/opencode/defaults/main.yml`
 
 What this repository deliberately does NOT manage:
 

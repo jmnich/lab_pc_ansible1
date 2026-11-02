@@ -17,7 +17,7 @@ description of the same system.
 ├── roles/serial_access/       # dialout group for all users via pam_group
 ├── roles/firefox_extensions/  # forced Firefox extensions via policies.json
 ├── roles/python_system/       # python3-* apt packages from a pip-freeze list
-├── roles/vendor_apps/         # lazygit, FTS Data Explorer, Digilent WaveForms+Adept
+├── roles/vendor_apps/         # lazygit, FTS Data Explorer
 ├── roles/opencode/            # opencode binary (pinned + checksummed)
 ├── roles/lab_update/          # installs /usr/local/bin/lab_update
 ├── files/lab_update           # converge now / --status helper script
@@ -102,14 +102,7 @@ description of the same system.
   enterprise policies.
 - **Vendor apps** (`roles/vendor_apps`): all upstream URLs/versions are
   pinned in its `defaults/main.yml` — bump the pin, commit, done. Notes:
-  lazygit/FTS come from GitHub release assets; the Digilent .debs come from
-  files.digilent.com (Cloudflare-fronted, the role sends a browser UA — if a
-  download is ever challenged, fetch the .deb manually once). Adept MUST be
-  installed before WaveForms, and the role asserts the installed Adept version
-  before touching WaveForms. The Digilent .debs are not rebuilt per base, so
-  their dependencies are installed explicitly first; the Qt6 libraries were
-  renamed to `*t64` on Mint 22 and the mapping lives in
-  `digilent_qt6_packages` — add the new base there before a fleet upgrade.
+  lazygit/FTS come from GitHub release assets.
   Codium is a Flatpak (`com.vscodium.codium`) with a
   `/usr/local/bin/codium` symlink so it works before re-login.
 - **opencode** (`roles/opencode`): pinned version + SHA-256 in its
