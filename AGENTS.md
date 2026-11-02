@@ -41,6 +41,29 @@ description of the same system.
   `ansible-galaxy collection install -r requirements.yml`).
 - Then commit and push to `main`. Laptops converge within ~1 h.
 
+## Failure isolation (do not regress)
+
+`local.yml` wraps every role in `block`/`rescue`. A failing role records itself
+in `lab_failed_roles` and the play continues; a final task reports the list and
+fails the run once, so the exit code stays non-zero but only after every other
+role has been attempted. Consequences to preserve:
+
+- **Never add a bare `roles:` list back to `local.yml`.** One failure would
+  again skip every role after it.
+- **Never use `ignore_errors: true`** to work around a failure: it hides the
+  error from the recap and lets `ansible-pull` exit 0, so `lab_update` reports
+  success and nobody notices.
+- **Every run retries every role.** There is deliberately no "skip known-broken
+  role" state: a laptop silently drifting out of sync is worse than a visible
+  hourly failure.
+- **Network tasks get `retries`/`delay`** (`get_url` in `vendor_apps` and
+  `opencode`): transient blips should not become permanent failures.
+- **Do not write `ansible.builtin.shell` tasks.** Ansible runs them under
+  `/bin/sh`, which is dash on Mint, so bashisms like `${var//a/b}` fail there
+  with "Bad substitution" while passing on machines where `/bin/sh` is bash.
+  Use declarative modules; if a shell is unavoidable, set `args: executable:
+  /bin/bash` explicitly.
+
 ## Hard rules (never violate)
 
 1. `state: present` only — never `state: latest`, never wildcard package

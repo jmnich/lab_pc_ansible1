@@ -50,6 +50,8 @@
     checksum: "sha256:{{ opencode_sha256 }}"
     mode: "0644"
     timeout: 300
+    retries: 3
+    delay: 10
   when: opencode_outdated | bool
 
 # Extract to a staging dir: the tarball's single member is `opencode`, but

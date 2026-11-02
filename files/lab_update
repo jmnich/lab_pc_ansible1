@@ -331,7 +331,18 @@ show_status() {
         printf '  checkout     not present (%s)\n' "$PULL_DIR"
     fi
 
-    printf '  next run     %s\n\n' "$(until_in "$next_epoch")"
+    printf '  next run     %s\n' "$(until_in "$next_epoch")"
+
+    # Surface which roles failed in the last run, so a partial failure is
+    # visible without grepping the journal. The play prints one line per
+    # failed role: "FAILED ROLE <name>: <message>".
+    local failed_roles
+    failed_roles=$(journalctl -u "$SERVICE" --no-pager --output=cat -n 400 2>/dev/null \
+        | sed -n 's/^.*FAILED ROLE \([^:]*\):.*/\1/p' | awk '!seen[$0]++' || true)
+    if [ -n "$failed_roles" ]; then
+        printf '  failed roles %s\n' "$(printf '%s' "$failed_roles" | tr '\n' ' ' | sed 's/ $//')"
+    fi
+    printf '\n'
 
     printf 'SOFTWARE\n'
     print_software
@@ -373,6 +384,11 @@ follow_progress() {
             next
         }
         /^fatal: \[/ || /^ERROR!/ {
+            printf "\r  %-58s\r", ""
+            print "  " $0
+            next
+        }
+        /FAILED ROLE / {
             printf "\r  %-58s\r", ""
             print "  " $0
             next

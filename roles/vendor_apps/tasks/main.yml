@@ -31,6 +31,8 @@
     dest: "{{ lazygit_tarball_dest }}"
     mode: "0644"
     timeout: 120
+    retries: 3
+    delay: 10
   when: lazygit_outdated | bool
 
 # Extract to a staging dir first: the tarball also contains LICENSE/README,
@@ -73,6 +75,8 @@
     dest: "{{ fts_install_path }}"
     mode: "0755"
     timeout: 120
+    retries: 3
+    delay: 10
 
 # The binary reports no version, so record which release tag was installed.
 # lab_update --status reads this file to tell "installed" from "outdated".

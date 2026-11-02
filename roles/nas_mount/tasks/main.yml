@@ -81,37 +81,71 @@
 # no "untrusted launcher" prompt, and it keeps working when the share is
 # unmounted (it just shows as a broken link until the NAS is reachable).
 #
-# The Desktop directory is read from each user's XDG config rather than
-# assumed to be ~/Desktop, and users without a Desktop folder are skipped:
-# creating one for them would put a stray directory in their home.
-- name: Find the human users who should get the Desktop shortcut
-  ansible.builtin.shell: |
-    set -eu
-    for home in /home/*; do
-      [ -d "$home" ] || continue
-      user=$(basename "$home")
-      id "$user" >/dev/null 2>&1 || continue
-      desktop="$home/Desktop"
-      if [ -f "$home/.config/user-dirs.dirs" ]; then
-        xdg=$(sed -n 's/^XDG_DESKTOP_DIR="\(.*\)"$/\1/p' "$home/.config/user-dirs.dirs" | head -1)
-        [ -n "$xdg" ] && desktop="${xdg//\$HOME/$home}"
-      fi
-      [ -d "$desktop" ] || continue
-      printf '%s\t%s\n' "$user" "$desktop"
-    done
-  register: nas_desktop_users
-  changed_when: false
+# Deliberately NOT a shell task: Ansible runs `shell` under /bin/sh, which is
+# dash on Mint, so bash-only expansions such as ${var//a/b} fail there with
+# "Bad substitution" (and pass silently on machines where /bin/sh is bash).
+# Everything below is declarative and therefore shell-independent.
+- name: Look up the local user accounts
+  ansible.builtin.getent:
+    database: passwd
+  register: nas_passwd
+  when: nas_host | length > 0 and nas_credentials.stat.exists
+
+# Human accounts only: UID >= 1000 and a home directory under /home.
+- name: Select the users who should get the Desktop shortcut
+  ansible.builtin.set_fact:
+    nas_desktop_candidates: >-
+      {{ nas_passwd.ansible_facts.getent_passwd
+         | dict2items
+         | selectattr('value.1', 'ge', '1000')
+         | selectattr('value.4', 'match', '^/home/')
+         | map(attribute='key')
+         | list }}
+  when: nas_host | length > 0 and nas_credentials.stat.exists
+
+- name: Read each user's XDG desktop directory setting
+  ansible.builtin.slurp:
+    src: "{{ item.value.4 }}/.config/user-dirs.dirs"
+  loop: "{{ nas_passwd.ansible_facts.getent_passwd | dict2items | selectattr('key', 'in', nas_desktop_candidates | default([])) | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: nas_xdg_raw
+  failed_when: false
+  when: nas_host | length > 0 and nas_credentials.stat.exists
+
+# Resolve each user's Desktop path: honour XDG_DESKTOP_DIR when set, else
+# fall back to ~/Desktop. $HOME inside the config is expanded to the real path.
+- name: Resolve the Desktop path for each user
+  ansible.builtin.set_fact:
+    nas_desktop_paths: >-
+      {%- set out = {} -%}
+      {%- for r in nas_xdg_raw.results | default([]) -%}
+      {%-   set raw = (r.content | default('') | b64decode) -%}
+      {%-   set found = raw | regex_findall('XDG_DESKTOP_DIR="([^"]*)"') -%}
+      {%-   set rel = (found | first | default('$HOME/Desktop')) | replace('$HOME', '') | regex_replace('^/', '') -%}
+      {%-   set _ = out.update({ r.item.key: rel }) -%}
+      {%- endfor -%}
+      {{ out }}
+  when: nas_host | length > 0 and nas_credentials.stat.exists
+
+- name: Check which Desktop directories actually exist
+  ansible.builtin.stat:
+    path: "{{ item.value.4 }}/{{ nas_desktop_paths[item.key] | default('Desktop') }}"
+  loop: "{{ nas_passwd.ansible_facts.getent_passwd | dict2items | selectattr('key', 'in', nas_desktop_candidates | default([])) | list }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: nas_desktop_stat
   when: nas_host | length > 0 and nas_credentials.stat.exists
 
 - name: Create the NAS shortcut on each user's Desktop
   ansible.builtin.file:
     src: "{{ nas_mount_path }}"
-    dest: "{{ item.split('\t')[1] }}/{{ nas_share }}"
+    dest: "{{ item.item.value.4 }}/{{ nas_desktop_paths[item.item.key] | default('Desktop') }}/{{ nas_share }}"
     state: link
-    owner: "{{ item.split('\t')[0] }}"
-    group: "{{ item.split('\t')[0] }}"
+    owner: "{{ item.item.key }}"
+    group: "{{ item.item.key }}"
     force: true
-  loop: "{{ nas_desktop_users.stdout_lines | default([]) }}"
+  loop: "{{ nas_desktop_stat.results | default([]) | selectattr('stat.exists', 'defined') | selectattr('stat.exists') | list }}"
   loop_control:
-    label: "{{ item.split('\t')[0] }} -> {{ item.split('\t')[1] }}/{{ nas_share }}"
+    label: "{{ item.item.key }}"
   when: nas_host | length > 0 and nas_credentials.stat.exists

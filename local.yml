@@ -1,15 +1,117 @@
 ---
+# Per-role failure isolation.
+#
+# Each role runs inside a block/rescue pair so that one failing task cannot
+# skip every role after it. A laptop that cannot install one vendor package
+# must still get its shell defaults, serial access, Firefox policies and NAS
+# mount. Failures are collected and reported at the end, where the play fails
+# once - so the exit code stays non-zero (systemd and lab_update still see the
+# failure) but only after everything else has been attempted.
+#
+# Every run retries every role: there is deliberately no "skip known-broken"
+# state, because a laptop silently drifting out of sync is worse than a
+# visible hourly failure.
 - hosts: localhost
   connection: local
   become: true
-  roles:
-    - common
-    - flatpak_apps
-    - desktop_defaults
-    - serial_access
-    - firefox_extensions
-    - python_system
-    - vendor_apps
-    - opencode
-    - nas_mount
-    - lab_update
+
+  vars:
+    lab_failed_roles: []
+
+  tasks:
+    - name: common
+      block:
+        - ansible.builtin.include_role:
+            name: common
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'common', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: flatpak_apps
+      block:
+        - ansible.builtin.include_role:
+            name: flatpak_apps
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'flatpak_apps', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: desktop_defaults
+      block:
+        - ansible.builtin.include_role:
+            name: desktop_defaults
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'desktop_defaults', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: serial_access
+      block:
+        - ansible.builtin.include_role:
+            name: serial_access
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'serial_access', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: firefox_extensions
+      block:
+        - ansible.builtin.include_role:
+            name: firefox_extensions
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'firefox_extensions', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: python_system
+      block:
+        - ansible.builtin.include_role:
+            name: python_system
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'python_system', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: vendor_apps
+      block:
+        - ansible.builtin.include_role:
+            name: vendor_apps
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'vendor_apps', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: opencode
+      block:
+        - ansible.builtin.include_role:
+            name: opencode
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'opencode', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: nas_mount
+      block:
+        - ansible.builtin.include_role:
+            name: nas_mount
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'nas_mount', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    - name: lab_update
+      block:
+        - ansible.builtin.include_role:
+            name: lab_update
+      rescue:
+        - ansible.builtin.set_fact:
+            lab_failed_roles: "{{ lab_failed_roles + [{'role': 'lab_update', 'msg': (ansible_failed_result.msg | default('failed'))}] }}"
+
+    # Report every failure in one place, then fail the play so the exit code
+    # is non-zero and the hourly timer keeps retrying.
+    - name: Report roles that failed
+      ansible.builtin.debug:
+        msg: "FAILED ROLE {{ item.role }}: {{ item.msg }}"
+      loop: "{{ lab_failed_roles }}"
+      loop_control:
+        label: "{{ item.role }}"
+
+    - name: Fail the run when any role failed
+      ansible.builtin.fail:
+        msg: >-
+          {{ lab_failed_roles | length }} role(s) failed:
+          {{ lab_failed_roles | map(attribute='role') | join(', ') }}.
+          Everything else was applied. The next hourly run retries all roles.
+      when: lab_failed_roles | length > 0
