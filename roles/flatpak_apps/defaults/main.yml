@@ -5,5 +5,6 @@
 flatpak_packages:
   - com.visualstudio.code
   - com.vscodium.codium
+  - com.sublimetext.three
 
 flatpak_packages_absent: []   # explicit blacklist only; never use wildcards

@@ -75,3 +75,43 @@
     opts: "{{ nas_mount_opts }}"
     state: mounted
   when: nas_host | length > 0 and nas_credentials.stat.exists
+
+# --- Desktop shortcut --------------------------------------------------------
+# A symlink rather than a .desktop launcher: it opens in the file manager with
+# no "untrusted launcher" prompt, and it keeps working when the share is
+# unmounted (it just shows as a broken link until the NAS is reachable).
+#
+# The Desktop directory is read from each user's XDG config rather than
+# assumed to be ~/Desktop, and users without a Desktop folder are skipped:
+# creating one for them would put a stray directory in their home.
+- name: Find the human users who should get the Desktop shortcut
+  ansible.builtin.shell: |
+    set -eu
+    for home in /home/*; do
+      [ -d "$home" ] || continue
+      user=$(basename "$home")
+      id "$user" >/dev/null 2>&1 || continue
+      desktop="$home/Desktop"
+      if [ -f "$home/.config/user-dirs.dirs" ]; then
+        xdg=$(sed -n 's/^XDG_DESKTOP_DIR="\(.*\)"$/\1/p' "$home/.config/user-dirs.dirs" | head -1)
+        [ -n "$xdg" ] && desktop="${xdg//\$HOME/$home}"
+      fi
+      [ -d "$desktop" ] || continue
+      printf '%s\t%s\n' "$user" "$desktop"
+    done
+  register: nas_desktop_users
+  changed_when: false
+  when: nas_host | length > 0 and nas_credentials.stat.exists
+
+- name: Create the NAS shortcut on each user's Desktop
+  ansible.builtin.file:
+    src: "{{ nas_mount_path }}"
+    dest: "{{ item.split('\t')[1] }}/{{ nas_share }}"
+    state: link
+    owner: "{{ item.split('\t')[0] }}"
+    group: "{{ item.split('\t')[0] }}"
+    force: true
+  loop: "{{ nas_desktop_users.stdout_lines | default([]) }}"
+  loop_control:
+    label: "{{ item.split('\t')[0] }} -> {{ item.split('\t')[1] }}/{{ nas_share }}"
+  when: nas_host | length > 0 and nas_credentials.stat.exists

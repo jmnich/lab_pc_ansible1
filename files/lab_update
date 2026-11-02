@@ -246,13 +246,31 @@ def fit(text, width):
 for name, version, status in rows:
     print("  %-*s  %-*s  %s" % (NAME_W, fit(name, NAME_W), VER_W, fit(version, VER_W), status))
 
-# NAS: shown only while it is still unconfigured. Once configured it is
-# omitted entirely, even when the share happens to be unreachable - a laptop
-# away from the lab network is normal, not a fault worth reporting.
+# NAS: shown only when the share is neither mounted nor configured.
+#
+# The mount is the authoritative signal, not the config: a share mounted by
+# any means (this role, a hand-edited fstab, or a leftover from before) is
+# working, and reporting "not configured" at that point is just wrong.
+# A configured-but-unmounted laptop is also silent - being away from the lab
+# network is normal, not a fault worth reporting.
 nas = role_defaults("nas_mount") or {}
 conf = nas.get("nas_conf_file")
 creds = nas.get("nas_credentials_file")
-if conf and creds:
+mount_path = nas.get("nas_mount_path") or "/mnt/Lab131_Primary"
+
+
+def is_mounted(path):
+    try:
+        out = subprocess.run(
+            ["findmnt", "-n", "-o", "TARGET", path],
+            capture_output=True, text=True, timeout=10,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.strip() != ""
+
+
+if conf and creds and not is_mounted(mount_path):
     host = ""
     try:
         with open(conf) as f:
@@ -265,7 +283,7 @@ if conf and creds:
     if not host or not os.path.exists(creds):
         print()
         print("NAS")
-        print("  not configured - the Lab131_Primary share is not mounted on this laptop")
+        print("  not configured - %s is not mounted on this laptop" % mount_path)
         print("    1. set NAS_HOST in %s" % conf)
         print("    2. put username/password in %s (chmod 600, root-owned)" % creds)
         print("    3. run: sudo lab_update")
