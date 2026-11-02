@@ -9,3 +9,6 @@
 collections:
   - name: community.general
     version: "4.8.1"
+  # ansible.posix provides the mount module used by roles/nas_mount.
+  - name: ansible.posix
+    version: "1.5.4"

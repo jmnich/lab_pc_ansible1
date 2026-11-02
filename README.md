@@ -32,6 +32,10 @@ variable at the top of `scripts/bootstrap.sh`.
 - Vendor/upstream apps installed as system binaries: lazygit, FTS Data
   Explorer and opencode (GitHub releases, pinned + checksummed), with URLs in
   `roles/vendor_apps/defaults/main.yml` and `roles/opencode/defaults/main.yml`
+- The Lab131_Primary NAS share as a CIFS mount (`roles/nas_mount`). The NAS
+  address and credentials are site-specific and secret, so they are NOT in
+  this repository: the role creates `/etc/lab-nas.conf` and expects
+  `/etc/smb-credentials-Lab131_Primary` to be filled in once per laptop
 
 What this repository deliberately does NOT manage:
 
@@ -89,6 +93,24 @@ A failed run (for example, while the laptop was offline) is harmless;
 the next timer tick retries automatically. For the raw log:
 
     journalctl -u ansible-pull.service -n 50
+
+## Setting up the NAS share
+
+The NAS address and credentials are not in this repository. On each laptop,
+once:
+
+1. Put the NAS IP in `/etc/lab-nas.conf` (`NAS_HOST=...`).
+2. Create the credentials file (root-only):
+
+       sudo sh -c 'printf "username=YOUR_USER\npassword=YOUR_PASS\n" \
+         > /etc/smb-credentials-Lab131_Primary && chmod 600 /etc/smb-credentials-Lab131_Primary'
+
+3. Run `sudo lab_update`.
+
+Both files are created with placeholders by `roles/nas_mount` and are never
+overwritten once they exist. Until both are filled in, `sudo lab_update
+--status` prints the same three steps; once configured, the mount is not
+reported at all (a laptop away from the lab network is not a fault).
 
 ## How to install something on just one laptop
 

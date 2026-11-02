@@ -1,0 +1,24 @@
+---
+# Lab NAS mount configuration.
+#
+# The NAS address is site-specific and the credentials are secret, so neither
+# can live in this public repository. Both are read at converge time from
+# files on the laptop itself, created here with placeholders and never
+# overwritten once they exist.
+#
+#   /etc/lab-nas.conf          host + share (no password)
+#   /etc/smb-credentials-<s>   username + password, root-only, 0600
+#
+# Fill both in, then run: sudo lab_update
+nas_conf_file: /etc/lab-nas.conf
+nas_share: Lab131_Primary
+nas_mount_path: /mnt/Lab131_Primary
+nas_credentials_file: /etc/smb-credentials-Lab131_Primary
+
+# Mount options. uid/gid are resolved by NAME, not by the numeric 1000 the
+# reference laptop uses: on a laptop where the lab user is not UID 1000 a
+# hardcoded uid would hand every file on the share to the wrong person.
+# _netdev and nofail keep a laptop booting normally when the NAS is absent.
+nas_mount_owner: labuser
+nas_mount_opts: >-
+  credentials={{ nas_credentials_file }},uid={{ nas_mount_owner }},gid={{ nas_mount_owner }},iocharset=utf8,vers=3.0,_netdev,nofail,soft,echo_interval=2

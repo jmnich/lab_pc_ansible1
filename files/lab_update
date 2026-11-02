@@ -245,6 +245,30 @@ def fit(text, width):
 
 for name, version, status in rows:
     print("  %-*s  %-*s  %s" % (NAME_W, fit(name, NAME_W), VER_W, fit(version, VER_W), status))
+
+# NAS: shown only while it is still unconfigured. Once configured it is
+# omitted entirely, even when the share happens to be unreachable - a laptop
+# away from the lab network is normal, not a fault worth reporting.
+nas = role_defaults("nas_mount") or {}
+conf = nas.get("nas_conf_file")
+creds = nas.get("nas_credentials_file")
+if conf and creds:
+    host = ""
+    try:
+        with open(conf) as f:
+            for line in f:
+                s = line.strip()
+                if s.startswith("NAS_HOST"):
+                    host = s.split("=", 1)[1].strip() if "=" in s else ""
+    except OSError:
+        pass
+    if not host or not os.path.exists(creds):
+        print()
+        print("NAS")
+        print("  not configured - the Lab131_Primary share is not mounted on this laptop")
+        print("    1. set NAS_HOST in %s" % conf)
+        print("    2. put username/password in %s (chmod 600, root-owned)" % creds)
+        print("    3. run: sudo lab_update")
 PY
 }
 

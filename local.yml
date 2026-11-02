@@ -11,4 +11,5 @@
     - python_system
     - vendor_apps
     - opencode
+    - nas_mount
     - lab_update

@@ -19,6 +19,7 @@ description of the same system.
 ├── roles/python_system/       # python3-* apt packages from a pip-freeze list
 ├── roles/vendor_apps/         # lazygit, FTS Data Explorer
 ├── roles/opencode/            # opencode binary (pinned + checksummed)
+├── roles/nas_mount/           # Lab131_Primary CIFS mount (site config in /etc)
 ├── roles/lab_update/          # installs /usr/local/bin/lab_update
 ├── files/lab_update           # converge now / --status helper script
 ├── files/ansible-pull.service # systemd unit; contains a literal REPO_URL placeholder
@@ -111,6 +112,13 @@ description of the same system.
   home under ansible-pull), exits the shell on a version match, and downloads
   without a checksum. Bump the version and BOTH hashes together (the release
   publishes no `.sha256` sidecar); a mismatch fails the run.
+- **NAS share** (`roles/nas_mount`): the NAS IP and credentials are
+  site-specific and secret, so they live OUTSIDE the repo in
+  `/etc/lab-nas.conf` (host only) and `/etc/smb-credentials-Lab131_Primary`
+  (username + password, 0600). The role creates both with placeholders and
+  never overwrites them (`force: false`). Never move these values into the
+  repo or into `defaults/`. An unconfigured laptop converges cleanly and
+  skips the mount; `lab_update --status` prints the setup steps until then.
 - **Python package set**: edit
   `roles/python_system/files/requirements-system-python.txt` (a `pip
   freeze` output filtered to packages that have an installable `python3-*`

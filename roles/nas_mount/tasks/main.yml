@@ -1,0 +1,77 @@
+---
+# The NAS address is site-specific, so it is not in this repository. This file
+# is created once with placeholders and then never touched again: editing it
+# here would be pointless, because the next ansible-pull would overwrite it.
+- name: Install cifs-utils for CIFS mounts
+  ansible.builtin.apt:
+    name: cifs-utils
+    state: present
+
+- name: Create the NAS configuration file with placeholders (only once)
+  ansible.builtin.copy:
+    dest: "{{ nas_conf_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+    content: |
+      # Lab NAS configuration.
+      #
+      # Fill in NAS_HOST, then put the username and password in
+      # {{ nas_credentials_file }} (mode 0600, root-owned):
+      #
+      #     sudo sh -c 'printf "username=YOUR_USER\npassword=YOUR_PASS\n" \
+      #       > {{ nas_credentials_file }} && chmod 600 {{ nas_credentials_file }}'
+      #
+      # Then run: sudo lab_update
+      #
+      # The share name is fixed by the role ({{ nas_share }}).
+      NAS_HOST=
+
+- name: Read the NAS configuration file
+  ansible.builtin.slurp:
+    src: "{{ nas_conf_file }}"
+  register: nas_conf_raw
+
+- name: Parse NAS_HOST from the configuration file
+  ansible.builtin.set_fact:
+    nas_host: >-
+      {{ (nas_conf_raw.content | b64decode).splitlines()
+         | select('match', '^\s*NAS_HOST\s*=')
+         | map('regex_replace', '^\s*NAS_HOST\s*=\s*', '')
+         | map('regex_replace', '\s+$', '')
+         | first | default('') }}
+
+- name: Check whether the credentials file exists
+  ansible.builtin.stat:
+    path: "{{ nas_credentials_file }}"
+  register: nas_credentials
+
+# Not configured is a normal state, not a failure: a laptop must converge
+# cleanly before anyone has filled these in.
+- name: Report that the NAS is not configured yet
+  ansible.builtin.debug:
+    msg:
+      - "NAS is not configured on this laptop; skipping the mount."
+      - "  1. Set NAS_HOST in {{ nas_conf_file }}"
+      - "  2. Put username/password in {{ nas_credentials_file }} (chmod 600)"
+      - "  3. Run: sudo lab_update"
+  when: nas_host | length == 0 or not nas_credentials.stat.exists
+
+- name: Create the NAS mount point
+  ansible.builtin.file:
+    path: "{{ nas_mount_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: nas_host | length > 0 and nas_credentials.stat.exists
+
+- name: Mount the NAS share and persist it in fstab
+  ansible.posix.mount:
+    path: "{{ nas_mount_path }}"
+    src: "//{{ nas_host }}/{{ nas_share }}"
+    fstype: cifs
+    opts: "{{ nas_mount_opts }}"
+    state: mounted
+  when: nas_host | length > 0 and nas_credentials.stat.exists
